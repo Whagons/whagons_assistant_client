@@ -15,7 +15,6 @@ interface ChatInputProps {
 const ChatInput = ({
   onSubmit,
   gettingResponse,
-  handleFileAttachment,
   setIsListening,
   handleStopRequest,
 }: ChatInputProps) => {
@@ -52,9 +51,6 @@ const ChatInput = ({
     return typeof content === "object" && "kind" in content && content.kind === "image-url";
   };
 
-  const isUploadingImage = (content: any): content is ImageData => {
-    return isImageData(content) && "isUploading" in content && content.isUploading === true;
-  };
 
   const handleFiles = async (files: File[]) => {
     for (const file of files) {
