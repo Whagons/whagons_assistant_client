@@ -1,17 +1,29 @@
-export interface TextContent {
-    type: "text";
-    text: string;
-  }
-  
-  //we are just gonna use base64 encoding
-export interface ImageContent {
-    type: "image_url";
-    image_url: string;
-  }
+export interface ImageData {
+  url: string;
+  media_type: string;
+  kind: "image-url";
+  serverUrl?: string;
+  isUploading?: boolean;
+}
+
+export interface ContentItem {
+  content: string | ImageData;
+  type?: "str" | "ImageUrl";
+  part_kind?: "text" | "image-url";
+}
+
+export interface MessageContent {
+  url?: string;
+  media_type?: string;
+  kind?: string;
+  serverUrl?: string;
+  isUploading?: boolean;
+  content?: string;
+}
   
 export interface Message {
     role: string;
-    content: (TextContent | ImageContent)[] | String | {name: string};
+    content: string | ContentItem[] | {name: string};
     reasoning?: string;
   }
 

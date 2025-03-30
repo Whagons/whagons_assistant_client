@@ -1,10 +1,7 @@
-import { useState, useRef, useEffect, FormEvent } from "react";
-import WaveIcon from "./WaveIcon";
-
+import { useState, useRef, useEffect } from "react";
 import Prism from "prismjs";
 import "./index.css";
-// import 'prismjs/components/prism-python'
-import { Message } from "../models/models";
+import { ContentItem, Message } from "../models/models";
 import MicrophoneVisualizer from "../../components/MicrophoneVisualizer";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useChatContext } from "@/layout";
@@ -12,11 +9,6 @@ import { useParams } from "react-router-dom";
 import AssistantMessageRenderer from "../components/AssitantMessageRenderer";
 
 const HOST = import.meta.env.VITE_CHAT_HOST;
-
-interface ChatMessage {
-  role: string;
-  content: string;
-}
 
 interface DBMessage {
   id: number;
@@ -27,28 +19,67 @@ interface DBMessage {
   updated_at: string;
 }
 
+type ChatMessage = Message;
+
 function convertToChatMessages(messages: DBMessage[]): ChatMessage[] {
   return messages
     .map((message) => {
       try {
         const parsed = JSON.parse(message.content);
+        const messageType = parsed.kind || parsed.type;
 
         // Handle model requests
-        if (parsed.type === "model_request") {
+        if (messageType === "request") {
           // Find the UserPromptPart in the parts array
-          const userPart = parsed.parts.find(
-            (part: any) => part.type === "UserPromptPart"
-          );
+          const userPart = parsed.parts.find((part: any) => part.type === "UserPromptPart");
           if (userPart) {
+            // Handle array content (mixed content including ImageUrl)
+            if (Array.isArray(userPart.content)) {
+              return {
+                role: "user",
+                content: userPart.content.map((item: any) => {
+                  // Handle string type items
+                  if (item.type === "str") {
+                    return {
+                      type: "str",
+                      content: item.content,
+                      part_kind: "text"
+                    };
+                  }
+                  // Handle ImageUrl, AudioUrl, DocumentUrl objects
+                  if (item.type && item.content && item.part_kind && item.part_kind.endsWith("-url")) {
+                    return {
+                      content: {
+                        url: item.content.url,
+                        media_type: item.part_kind.replace("-url", "/*"),
+                        kind: item.part_kind,
+                        serverUrl: item.content.url
+                      }
+                    };
+                  }
+                  return { content: JSON.stringify(item) };
+                })
+              };
+            }
+            // Handle single string content
+            if (typeof userPart.content === "string") {
+              return {
+                role: "user",
+                content: userPart.content
+              };
+            }
+            // Handle single object content
             return {
               role: "user",
-              content: userPart.content,
+              content: [{
+                content: userPart.content
+              }]
             };
           }
           const toolReturnPart = parsed.parts.find(
             (part: any) => part.type === "ToolReturnPart"
           );
-          if (1) {
+          if (toolReturnPart) {
             return {
               role: "tool_result",
               content: JSON.stringify(toolReturnPart.content),
@@ -58,7 +89,7 @@ function convertToChatMessages(messages: DBMessage[]): ChatMessage[] {
         }
 
         // Handle model responses
-        if (parsed.type === "model_response") {
+        if (messageType === "response") {
           //to rerturn
           let result = {
             role: "assistant",
@@ -93,87 +124,7 @@ function convertToChatMessages(messages: DBMessage[]): ChatMessage[] {
     .filter((message): message is ChatMessage => message !== null);
 }
 
-// Create a new ChatInput component
-const ChatInput = ({
-  onSubmit,
-  gettingResponse,
-  handleFileAttachment,
-  setIsListening,
-  handleStopRequest,
-}: {
-  onSubmit: (text: string) => void;
-  gettingResponse: boolean;
-  handleFileAttachment: () => void;
-  setIsListening: (isListening: boolean) => void;
-  handleStopRequest: () => void;
-}) => {
-  const [input, setInput] = useState("");
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (input.trim()) {
-      onSubmit(input);
-      setInput("");
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2">
-      <input
-        className="flex-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-4 py-2 text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:text-gray-200"
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Type your message..."
-        autoComplete="off"
-        spellCheck="false"
-      />
-      <div className="flex gap-2">
-        <button
-          type="button"
-          className="rounded-full p-2 text-gray-500 bg-gray-50 hover:bg-gray-100 dark:text-gray-400 dark:bg-gray-800 dark:hover:bg-gray-700"
-          onClick={handleFileAttachment}
-        >
-          <i className="fas fa-paperclip"></i>
-        </button>
-
-        {gettingResponse ? (
-          <button
-            type="button"
-            className="rounded-full p-2 text-red-600 bg-gray-100 hover:bg-gray-200 dark:text-red-400 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors min-w-[40px] flex items-center justify-center"
-            onClick={handleStopRequest}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <rect x="6" y="6" width="12" height="12" />
-            </svg>
-          </button>
-        ) : input.trim() === "" ? (
-          <button
-            type="button"
-            className="rounded-full p-2 text-gray-600 bg-gray-100 hover:bg-gray-200 dark:text-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors min-w-[40px] flex items-center justify-center"
-            onClick={() => setIsListening(true)}
-          >
-            <WaveIcon />
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="rounded-full p-2 text-gray-600 bg-gray-100 hover:bg-gray-200 dark:text-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors min-w-[40px] flex items-center justify-center"
-            onClick={handleSubmit}
-          >
-            <i className="fas fa-paper-plane"></i>
-          </button>
-        )}
-      </div>
-    </form>
-  );
-};
+import ChatInput from "../components/ChatInput";
 
 function ChatWindow() {
   const { open, openMobile, isMobile } = useSidebar();
@@ -205,7 +156,6 @@ function ChatWindow() {
   }
 
   useEffect(() => {
-    console.log("id", id);
     if (id) {
       setConversationId(id);
     }
@@ -232,14 +182,14 @@ function ChatWindow() {
     })();
   }, []);
 
-  const handleSubmit = async (text: string) => {
+  const handleSubmit = async (content: string | ContentItem[]) => {
     if (gettingResponse) return;
 
     setGettingResponse(true);
 
     const newMessage: Message = {
       role: "user",
-      content: text,
+      content: content,
     };
 
     const updatedMessages = [...messages, newMessage];
@@ -250,7 +200,27 @@ function ChatWindow() {
     }, 100);
 
     const url = new URL(`${HOST}/api/v1/chats/chat`);
-    url.searchParams.append("prompt", text);
+    const requestBody = {
+      content: typeof content === "string"
+        ? [{ content: content }]
+        : content.map(item => {
+            if (typeof item.content === "string") {
+              return {
+                content: item.content
+              };
+            } else if (item.content.serverUrl) {
+              return {
+                content: {
+                  url: item.content.serverUrl,
+                  media_type: item.content.media_type,
+                  kind: "image-url"
+                }
+              };
+            } else {
+              throw new Error("Image upload data is incomplete.");
+            }
+          })
+    };
     url.searchParams.append("conversation_id", conversationId);
 
     try {
@@ -266,6 +236,7 @@ function ChatWindow() {
           Accept: "text/event-stream",
           "Content-Type": "application/json",
         },
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -319,7 +290,6 @@ function ChatWindow() {
               const data = JSON.parse(jsonString);
               // console.log("data:", data);
               // console.log("event kind:", data.type);
-              console.log("data.type:", data.type);
               if (data.type === "part_start") {
                 //if it's a part start we can create a new message
                 //it it's start we push the new message to the messages
@@ -391,7 +361,7 @@ function ChatWindow() {
       const data = await response.json();
       // console.log(data.messages);
       const chatMessages = convertToChatMessages(data.messages);
-      //console.log(chatMessages);
+      console.log("chatMessages", chatMessages);
       // console.log(data);
       setMessages(chatMessages);
     } catch (error) {
@@ -442,12 +412,12 @@ function ChatWindow() {
     // height of last message must content he + 80% of parent height calculate then set as pixels
     const lastMessage = document.getElementById("last-message");
     if (lastMessage) {
-      const contentHeight = lastMessage.querySelector(".message-content")?.clientHeight ?? 0;
+      const contentHeight =
+        lastMessage.querySelector(".message-content")?.clientHeight ?? 0;
       const parentHeight = lastMessage.clientHeight ?? 0;
       const newHeight = contentHeight + parentHeight * 0.7;
       lastMessage.style.height = `${newHeight}px`;
     }
-
   }, [messages]);
 
   return (
@@ -489,16 +459,13 @@ function ChatWindow() {
                     message.role === "user"
                       ? " user justify-end items-start "
                       : " assistant justify-start items-start"
-                  } ${
-                    index === messages.length - 1 ? "min-h-full" : ""
-                  }`}
-
+                  } ${index === messages.length - 1 ? "min-h-full" : ""}`}
                   id={index === messages.length - 1 ? "last-message" : ""}
                 >
                   <div
-                    className={`message-content m-5  ${
+                    className={`message-content ${
                       message.role === "user"
-                        ? "max-w-[70%] flex items-end self-start"
+                        ? "max-w-[85%] flex items-end self-start"
                         : "w-full"
                     } rounded-3xl pt-2 pb-2 pl-4 pr-4 ${
                       message.role === "user"
@@ -507,8 +474,43 @@ function ChatWindow() {
                     } break-words overflow-hidden`}
                   >
                     {message.role === "user" ? (
-                      <div className="text-sm md:text-base">
-                        {message.content as string}
+                      <div className="text-sm md:text-base flex flex-col gap-8 w-full items-end">
+                        {Array.isArray(message.content)
+                          ? message.content.map((item, idx) => {
+                              if (typeof item.content === "string") {
+                                return (
+                                  <div key={idx} className="text-base leading-relaxed m-2">
+                                    {item.content}
+                                  </div>
+                                );
+                              }
+                              if (typeof item.content === "object") {
+                                if ("kind" in item.content && item.content.kind === "image-url") {
+                                  return (
+                                    <div key={idx} className="flex justify-end">
+                                      <img
+                                        src={item.content.serverUrl || item.content.url}
+                                        alt="Uploaded content"
+                                        className="h-80 w-80 object-cover rounded-xl shadow-lg hover:shadow-xl transition-shadow mt-4 ml-4 mr-4"
+                                      />
+                                    </div>
+                                  );
+                                }
+                                if ("content" in item.content && typeof item.content.content === "string") {
+                                  return (
+                                    <div key={idx} className="text-base leading-relaxed m-2">
+                                      {item.content.content}
+                                    </div>
+                                  );
+                                }
+                              }
+                              return (
+                                <div key={idx} className="text-base leading-relaxed m-2">
+                                  {JSON.stringify(item.content)}
+                                </div>
+                              );
+                            })
+                          : (message.content as string)}
                       </div>
                     ) : (
                       <AssistantMessageRenderer
