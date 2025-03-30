@@ -1,6 +1,7 @@
 from custom.models.gemini import GeminiModel
 from custom.providers.google_gla import GoogleGLAProvider
 from custom import Agent
+from custom.messages import UserContent
 import os
 
 async def gemini(prompt: str) -> str:
@@ -25,3 +26,28 @@ async def gemini(prompt: str) -> str:
     response = await agent.run(prompt)
     # print(response, "\n")
     return response.data
+
+async def geminiParts(content: list[UserContent]) -> str:
+    """
+    Function that takes a list of mixed content (text, images, audio) and returns a Gemini response.
+    Used for generating conversation titles from mixed content.
+
+    Args:
+        content: List of UserContent that can include text, image URLs, or audio URLs
+
+    Returns:
+        The text response from Gemini
+    """
+    model = GeminiModel(
+        "gemini-2.0-flash",
+        provider=GoogleGLAProvider(api_key=os.getenv("GEMINI_API_KEY")),
+    )
+
+    agent = Agent(
+        model=model,
+        system_prompt="Based on the user's content, generate a title for the conversation. The title should be a single sentence that captures the essence of the conversation. The title should be no more than 10 words.",
+    )
+    response = await agent.run(content)
+    return response.data
+
+

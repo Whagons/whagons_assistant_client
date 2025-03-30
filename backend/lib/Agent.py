@@ -39,9 +39,12 @@ class RunResult:
 class Agent:
     tools = []
 
-    def __init__(self, model=None, system_prompt=DEFAULT_SYSTEM):
+    def __init__(self, model=None, system_prompt=DEFAULT_SYSTEM, tools=[]):
         self.model = model
         self.system_prompt = system_prompt
+        #tools are raw functions I must turn them into real tools
+        for tool in tools:
+            self.tools.append(self.tool(tool))
 
     def tool(self, func: Callable[..., RT]) -> Callable[..., RT]:
         """Decorator to register a function as a tool."""

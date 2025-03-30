@@ -13,6 +13,7 @@ import firebase_admin
 from firebase_admin import credentials
 from routes.chats_router import chats_router
 from routes.user_routes import user_router
+from routes.files_router import files_router
 from contextlib import asynccontextmanager
 import os
 
@@ -89,6 +90,17 @@ chat_routes = APIRouter(prefix="/api/v1", tags=["chat"])
 # Add Firebase authentication dependency to base router, needs base role
 chat_routes.dependencies.append(Depends(role_based_access(["whitelisted"])))
 chat_routes.include_router(chats_router)
+
+#####################################################
+
+
+#####################################################
+# Files Router Configuration
+#####################################################
+files_routes = APIRouter(prefix="/api/v1/files", tags=["files"])
+# Add Firebase authentication dependency to base router, needs base role
+files_routes.dependencies.append(Depends(role_based_access(["whitelisted"])))
+files_routes.include_router(files_router)
 
 #####################################################
 
@@ -176,8 +188,8 @@ async def custom_swagger_ui_html():
 #include routers in main
 app.include_router(chat_routes)
 app.include_router(user_routes)
+app.include_router(files_routes)
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("index:app", host="0.0.0.0", port=8000, reload=True, proxy_headers=True, forwarded_allow_ips="*")
-
