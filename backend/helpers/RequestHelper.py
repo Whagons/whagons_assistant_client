@@ -134,165 +134,129 @@ def make_request(
     json_data: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """
-    Makes an HTTP request using the requests library, handling token refresh
-    and returning structured errors including status code and headers on failure.
-
-    Args:
-        method: HTTP method (e.g., 'GET', 'POST').
-        url: The URL for the request.
-        headers: Optional dictionary of headers. Uses global _headers if None.
-        json_data: Optional dictionary for the JSON request body.
-
-    Returns:
-        tuple: (response_json, None) on success (status 200-299, excluding 204),
-               ({}, None) on success with status 204 (No Content),
-               (None, error_details) on failure.
-               The error_details dictionary will contain 'error', 'details',
-               and potentially 'status_code', 'headers', and 'response_text'.
+    Makes an HTTP request, handling token refresh and returning structured errors.
+    Attempts to gracefully handle successful 2xx responses even with non-JSON/empty bodies.
+    Includes refined exception handling.
     """
     global _headers
-    response: Optional[requests.Response] = (
-        None  # Keep track of response for error reporting
-    )
+    response: Optional[requests.Response] = None
+    req_id = f"{method} {url}"
 
-    # 1. Check and refresh token
+    # --- Token Check and Header Prep (Keep as before) ---
+    logging.debug(f"[{req_id}] Checking token...")
     token_error = _check_and_refresh_token()
-    if token_error:
-        logging.error(f"Token refresh failed prior to request: {token_error}")
-        # Ensure the returned error structure is consistent
-        if isinstance(token_error, dict):
-            token_error.setdefault("error", "Token refresh failed")
-            return None, token_error
-        else:
-            return None, {"error": "Token refresh failed", "details": str(token_error)}
+    if token_error: # ... (handle token error)
+        logging.error(f"[{req_id}] Token refresh failed: {token_error}")
+        err_payload = token_error if isinstance(token_error, dict) else {"details": str(token_error)}
+        err_payload.setdefault("error", "Token refresh failed")
+        return None, err_payload
+    logging.debug(f"[{req_id}] Token check OK.")
 
-    # 2. Prepare headers
-    request_headers = _headers if headers is None else headers
-    if (
-        not request_headers
-    ):  # Ensure headers are actually set after potential global lookup
-        logging.error("Request headers are missing after token check and fallback.")
-        return None, {
-            "error": "Missing request headers",
-            "status_code": 500,
-        }  # Internal configuration error
+    request_headers = _headers
+    if not request_headers: # ... (handle missing headers error)
+        logging.error(f"[{req_id}] Missing request headers.")
+        return None, {"error": "Missing request headers", "status_code": 500} # Internal config error
+    logging.debug(f"[{req_id}] Headers prepared.")
+    # --- End Token/Header Prep ---
 
-    # 3. Make the request
     try:
-        logging.debug(f"Making {method} request to {url}")
+        logging.info(f"[{req_id}] Making request...")
         response = requests.request(
-            method,
-            url,
-            headers=request_headers,
-            json=json_data,
-            timeout=30,  # Add a reasonable timeout
+            method, url, headers=request_headers, json=json_data, timeout=30
         )
+        logging.info(f"[{req_id}] Request completed. Status: {response.status_code}")
+        logging.debug(f"[{req_id}] Response Headers: {dict(response.headers)}")
 
-        # Check for HTTP errors (4xx, 5xx)
-        response.raise_for_status()
+        # Check for HTTP errors first (4xx/5xx)
+        response.raise_for_status() # Raises HTTPError for bad status
 
-        # Handle successful responses
+        # --- Success Handling (2xx) ---
         if response.status_code == 204:
-            logging.debug(f"Request successful with 204 No Content: {method} {url}")
-            return (
-                {},
-                None,
-            )  # Return empty dict for No Content, signifying success with no data
+            logging.debug(f"[{req_id}] Successful: 204 No Content.")
+            return {}, None # Success, no body
 
-        # Attempt to parse JSON for other successful responses (e.g., 200, 201)
-        # Note: response.json() can still raise JSONDecodeError if body is not valid JSON
-        response_json = response.json()
-        logging.debug(
-            f"Request successful with status {response.status_code}: {method} {url}"
-        )
-        return response_json, None
+        # Try parsing JSON for other 2xx status codes
+        try:
+            # IMPORTANT: Check if body actually has content before trying .json()
+            if not response.content: # Access raw bytes first
+                 logging.warning(f"[{req_id}] Successful ({response.status_code}) but response body is empty.")
+                 # Return success, indicating no data was returned
+                 return {"status_code": response.status_code, "message": "Success, but empty response body."}, None
+            else:
+                 # Body has content, now try decoding JSON
+                 response_json = response.json()
+                 logging.debug(f"[{req_id}] Successful ({response.status_code}) with JSON body.")
+                 return response_json, None
+        except json.JSONDecodeError:
+            # 2xx status, but body wasn't valid JSON
+            response_text = response.text
+            logging.warning(
+                f"[{req_id}] Successful ({response.status_code}) but response body was not valid JSON. Body start: '{response_text[:200]}...'"
+            )
+            # Return success, but provide the text preview
+            return {"status_code": response.status_code, "message": "Success, but non-JSON response body.", "response_text_preview": response_text[:200]}, None
 
-    # 4. Handle specific exceptions
+    # --- Exception Handling ---
     except requests.exceptions.HTTPError as e:
-        # This is raised by response.raise_for_status() for 4xx/5xx errors
-        # The 'response' object is guaranteed to be available in 'e.response'
+        # Handles 4xx/5xx errors raised by raise_for_status()
+        # response is guaranteed available via e.response
         err_status = e.response.status_code
-        err_headers = dict(e.response.headers)  # Get headers as a dict
-        err_text = e.response.text  # Get raw response body
-
-        log_msg = (
-            f"HTTP Error {err_status} for {method} {url}. Response: {err_text[:500]}"  # Log truncated response
-            f"{'...' if len(err_text) > 500 else ''}"
-        )
-        # Log specific error types differently
-        if 400 <= err_status < 500:
-            logging.warning(log_msg)  # Client errors as warnings
-        else:
-            logging.error(log_msg)  # Server errors as errors
-
-        return None, {
-            "error": f"HTTP Error: {err_status}",
-            "details": str(e),  # Original exception message
-            "status_code": err_status,
-            "headers": err_headers,
-            "response_text": err_text,  # Include response body for debugging
-        }
+        err_headers = dict(e.response.headers)
+        err_text = e.response.text
+        log_msg = f"[{req_id}] HTTP Error {err_status}. Response: '{err_text[:500]}...'"
+        if 400 <= err_status < 500: logging.warning(log_msg)
+        else: logging.error(log_msg)
+        return None, {"error": f"HTTP Error: {err_status}", "details": str(e), "status_code": err_status, "headers": err_headers, "response_text": err_text}
 
     except requests.exceptions.Timeout as e:
-        logging.error(f"Request timed out for {method} {url}: {e}")
-        return None, {"error": "Request Timeout", "details": str(e)}
+        logging.error(f"[{req_id}] Request timed out: {e}")
+        return None, {"error": "Request Timeout", "details": str(e), "status_code": None} # No status code available
 
     except requests.exceptions.ConnectionError as e:
-        logging.error(f"Connection error for {method} {url}: {e}")
-        return None, {"error": "Connection Error", "details": str(e)}
+        logging.error(f"[{req_id}] Connection error: {e}")
+        return None, {"error": "Connection Error", "details": str(e), "status_code": None} # No status code available
 
+    # Catch OTHER request-related errors (could happen before response is fully formed)
     except requests.exceptions.RequestException as e:
-        # Catch other potential request issues (e.g., URL formatting, invalid headers *before* send)
-        # 'response' might be None here
+        logging.error(f"[{req_id}] Generic RequestException: {e.__class__.__name__}: {e}", exc_info=True)
+        # --- CRITICAL CHECK: Does the exception *itself* have a response object? ---
         err_status = None
         err_headers = {}
         err_text = None
-        log_msg = f"Generic RequestException for {method} {url}: {e}"
-
-        if hasattr(e, "response") and e.response is not None:
-            # If somehow a RequestException has a response (less common for non-HTTPError)
+        if hasattr(e, 'response') and e.response is not None:
+            logging.warning(f"[{req_id}] RequestException had a response object attached (Status: {e.response.status_code}). Re-evaluating.")
+            # If it has a response, maybe it SHOULD have been an HTTPError or handled like one?
+            # Or maybe it's a successful response caught here due to weird internal issue?
+            # Let's try to extract info, but still report as Request Failed unless status is 2xx
             err_status = e.response.status_code
             err_headers = dict(e.response.headers)
-            err_text = e.response.text
-            log_msg += f" (Status: {err_status})"
+            try:
+                 err_text = e.response.text
+            except Exception: # Handle cases where reading text might also fail
+                 err_text = "[Could not read response text]"
 
-        logging.error(log_msg)
-        return None, {
-            "error": "Request Failed",
-            "details": str(e),
-            "status_code": err_status,  # May be None
-            "headers": err_headers,  # May be empty
-            "response_text": err_text,  # May be None
-        }
+            # If status code is actually OK despite the exception, log it but still return error for safety
+            if 200 <= err_status < 300:
+                 logging.error(f"[{req_id}] RequestException caught BUT response status ({err_status}) was OK. Returning error due to underlying exception: {e}")
+                 # Return a specific error indicating this weird state
+                 return None, {"error": "Request Exception Despite OK Status", "details": str(e), "status_code": err_status, "headers": err_headers, "response_text": err_text}
+            # Otherwise, treat as a standard failure caught by this handler
+            return None, {"error": "Request Failed", "details": str(e), "status_code": err_status, "headers": err_headers, "response_text": err_text}
+        else:
+            # No response object attached to the exception, return standard Request Failed
+             return None, {"error": "Request Failed", "details": str(e), "status_code": None, "headers": {}, "response_text": None}
 
+
+    # Outer JSONDecodeError - should be less likely now, but catches issues during body read perhaps
     except json.JSONDecodeError as e:
-        # This happens if raise_for_status passed (e.g., status 200) but the body wasn't valid JSON
-        err_status = response.status_code if response else None
+        err_status = response.status_code if response else None # Try to get status if response exists
         err_headers = dict(response.headers) if response else {}
-        err_text = response.text if response else None
-
-        logging.error(
-            f"Failed to decode JSON response for {method} {url} (Status: {err_status}): {e}"
-        )
-        return None, {
-            "error": "Failed to decode JSON response",
-            "details": str(e),
-            "status_code": err_status,  # Include status code if available
-            "headers": err_headers,  # Include headers if available
-            "response_text": err_text,  # Include the raw text that failed parsing
-        }
+        err_text = response.text if response else "[Response object not available]"
+        logging.error(f"[{req_id}] Unexpected JSONDecodeError (Status: {err_status}): {e}. Body: '{err_text[:200]}...'", exc_info=True)
+        return None, {"error": "Failed unexpectedly during JSON decode", "details": str(e), "status_code": err_status, "headers": err_headers, "response_text": err_text}
 
     except Exception as e:
         # Catch-all for truly unexpected errors
         err_status = response.status_code if response else None
-        logging.exception(
-            f"An unexpected error occurred during request for {method} {url} (Status: {err_status})"
-        )
-        return (
-            None,
-            {
-                "error": "Unexpected error during request",
-                "details": str(e),
-                "status_code": err_status,  # Include status if response was received before exception
-            },
-        )
+        logging.exception(f"[{req_id}] An unexpected error occurred (Status: {err_status})")
+        return None, {"error": "Unexpected error during request", "details": str(e), "status_code": err_status}
