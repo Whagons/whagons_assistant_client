@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from custom import RunContext
+from pydantic_ai import RunContext
 from helpers.RequestHelper import make_request
 
 def _list_sharepoint_sites(ctx: RunContext) -> Tuple[Optional[List[Dict[str, Any]]], Optional[Dict[str, Any]]]:

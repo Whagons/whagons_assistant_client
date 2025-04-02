@@ -1,5 +1,5 @@
 from ai.assistant_functions.team_functions import search_teams_by_field, search_teams_by_field_no_ctx
-from custom import RunContext
+from pydantic_ai import RunContext
 import logging
 import time
 

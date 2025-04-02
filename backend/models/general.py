@@ -1,7 +1,7 @@
 from typing import List, Union
 from pydantic import BaseModel
 
-from custom.messages import FinalResultEvent, FunctionToolCallEvent, FunctionToolResultEvent, PartDeltaEvent, PartStartEvent
+from pydantic_ai.messages import FinalResultEvent, FunctionToolCallEvent, FunctionToolResultEvent, PartDeltaEvent, PartStartEvent
 
 
 

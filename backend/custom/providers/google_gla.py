@@ -4,8 +4,8 @@ import os
 
 import httpx
 
-from custom.models import cached_async_http_client
-from custom.providers import Provider
+from pydantic_ai.models import cached_async_http_client
+from pydantic_ai.providers import Provider
 
 
 class GoogleGLAProvider(Provider[httpx.AsyncClient]):

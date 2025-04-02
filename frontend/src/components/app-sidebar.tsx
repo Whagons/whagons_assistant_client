@@ -144,7 +144,7 @@ export function AppSidebar() {
   
   return (
     <Sidebar>
-      <SidebarContent>
+      <SidebarContent className="bg-[#e9ecef] dark:bg-[#15202b]">
         <SidebarGroup>
           <div className="flex items-center justify-between p-3">
             <SidebarGroupLabel className="text-base font-medium">Chats</SidebarGroupLabel>

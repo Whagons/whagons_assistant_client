@@ -15,7 +15,7 @@ import pydantic
 from httpx import USE_CLIENT_DEFAULT, AsyncClient as AsyncHTTPClient, Response as HTTPResponse
 from typing_extensions import NotRequired, TypedDict, assert_never, deprecated
 
-from custom.providers import Provider, infer_provider
+from pydantic_ai.providers import Provider, infer_provider
 
 from .. import ModelHTTPError, UnexpectedModelBehavior, UserError, _utils, usage
 from ..messages import (

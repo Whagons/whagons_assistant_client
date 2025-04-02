@@ -1,8 +1,8 @@
-
 import {
   useRef,
   memo,
   useLayoutEffect,
+  useState,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,10 +16,10 @@ import { visit, SKIP } from "unist-util-visit";
 import type { Plugin } from 'unified';
 import type { Root, Element, Text } from 'hast';
 
-
 interface AssistantMessageProps {
   fullContent: string;
   gettingResponse: boolean;
+  reasoning?: string;
 }
 
 const rehypeWrapWordsInSpans: Plugin<[], Root> = () => {
@@ -81,10 +81,9 @@ const rehypeWrapWordsInSpans: Plugin<[], Root> = () => {
 // --- Component ---
 
 const AssistantMessageRenderer = memo(
-  ({ fullContent, gettingResponse }: AssistantMessageProps) => {
-    // State for the content already rendered structurally soundly
-
+  ({ fullContent, gettingResponse, reasoning }: AssistantMessageProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const [isReasoningOpen, setIsReasoningOpen] = useState(false);
 
     // --- Scrolling Effect (keep as is) ---
     useLayoutEffect(() => {
@@ -101,6 +100,46 @@ const AssistantMessageRenderer = memo(
 
     return (
       <div ref={containerRef} className="assistant-message-container p-1">
+        {reasoning && (
+          <div className="mb-4">
+            <button
+              onClick={() => setIsReasoningOpen(!isReasoningOpen)}
+              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className={`h-4 w-4 transform transition-transform ${
+                  isReasoningOpen ? "rotate-180" : ""
+                }`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+              <span className={gettingResponse && fullContent.length === 0 ? "wave-text" : ""}>
+                {gettingResponse && fullContent.length === 0 ? "thinking..." : "View Reasoning"}
+              </span>
+            </button>
+            {isReasoningOpen && (
+              <div className="mt-2 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <ReactMarkdown
+                  components={{
+                    pre: CustomPre,
+                  }}
+                  children={reasoning}
+                  remarkPlugins={[remarkGfm, remarkBreaks, supersub]}
+                  rehypePlugins={[]}
+                />
+              </div>
+            )}
+          </div>
+        )}
         {gettingResponse ? (
           <ReactMarkdown
             components={{
@@ -111,7 +150,7 @@ const AssistantMessageRenderer = memo(
             rehypePlugins={[rehypeWrapWordsInSpans]}
           />
         ) : (
-            <ReactMarkdown
+          <ReactMarkdown
             components={{
               pre: CustomPre,
             }}

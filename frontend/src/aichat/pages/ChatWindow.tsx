@@ -31,7 +31,9 @@ function convertToChatMessages(messages: DBMessage[]): ChatMessage[] {
         // Handle model requests
         if (messageType === "request") {
           // Find the UserPromptPart in the parts array
-          const userPart = parsed.parts.find((part: any) => part.type === "UserPromptPart");
+          const userPart = parsed.parts.find(
+            (part: any) => part.type === "UserPromptPart"
+          );
           if (userPart) {
             // Handle array content (mixed content including ImageUrl)
             if (Array.isArray(userPart.content)) {
@@ -43,37 +45,44 @@ function convertToChatMessages(messages: DBMessage[]): ChatMessage[] {
                     return {
                       type: "str",
                       content: item.content,
-                      part_kind: "text"
+                      part_kind: "text",
                     };
                   }
                   // Handle ImageUrl, AudioUrl, DocumentUrl objects
-                  if (item.type && item.content && item.part_kind && item.part_kind.endsWith("-url")) {
+                  if (
+                    item.type &&
+                    item.content &&
+                    item.part_kind &&
+                    item.part_kind.endsWith("-url")
+                  ) {
                     return {
                       content: {
                         url: item.content.url,
                         media_type: item.part_kind.replace("-url", "/*"),
                         kind: item.part_kind,
-                        serverUrl: item.content.url
-                      }
+                        serverUrl: item.content.url,
+                      },
                     };
                   }
                   return { content: JSON.stringify(item) };
-                })
+                }),
               };
             }
             // Handle single string content
             if (typeof userPart.content === "string") {
               return {
                 role: "user",
-                content: userPart.content
+                content: userPart.content,
               };
             }
             // Handle single object content
             return {
               role: "user",
-              content: [{
-                content: userPart.content
-              }]
+              content: [
+                {
+                  content: userPart.content,
+                },
+              ],
             };
           }
           const toolReturnPart = parsed.parts.find(
@@ -201,25 +210,26 @@ function ChatWindow() {
 
     const url = new URL(`${HOST}/api/v1/chats/chat`);
     const requestBody = {
-      content: typeof content === "string"
-        ? [{ content: content }]
-        : content.map(item => {
-            if (typeof item.content === "string") {
-              return {
-                content: item.content
-              };
-            } else if (item.content.serverUrl) {
-              return {
-                content: {
-                  url: item.content.serverUrl,
-                  media_type: item.content.media_type,
-                  kind: "image-url"
-                }
-              };
-            } else {
-              throw new Error("Image upload data is incomplete.");
-            }
-          })
+      content:
+        typeof content === "string"
+          ? [{ content: content }]
+          : content.map((item) => {
+              if (typeof item.content === "string") {
+                return {
+                  content: item.content,
+                };
+              } else if (item.content.serverUrl) {
+                return {
+                  content: {
+                    url: item.content.serverUrl,
+                    media_type: item.content.media_type,
+                    kind: "image-url",
+                  },
+                };
+              } else {
+                throw new Error("Image upload data is incomplete.");
+              }
+            }),
     };
     url.searchParams.append("conversation_id", conversationId);
 
@@ -292,7 +302,15 @@ function ChatWindow() {
               // console.log("event kind:", data.type);
               if (data.type === "part_start") {
                 //if it's a part start we can create a new message
-                //it it's start we push the new message to the messages
+                //if it's a part start of type text, and the last message contains some reasoning but no content, we can add the reasoning to the content
+                if (data.data.part.part_kind === "text" && updatedMessages[updatedMessages.length - 1].role === "assistant") {
+                  const lastMessage = updatedMessages[updatedMessages.length - 1];
+                  if (typeof lastMessage.reasoning === 'string' && typeof lastMessage.content === 'string' && 
+                      lastMessage.reasoning.length > 0 && lastMessage.content.length === 0) {
+                    lastMessage.content += data.data.part.content;
+                    continue;
+                  }
+                }
                 updatedMessages.push(newAssistantMessage);
 
                 if (data.data.part.part_kind === "text") {
@@ -455,9 +473,9 @@ function ChatWindow() {
                   ref={
                     index === messages.length - 1 ? messagesEndRef : undefined
                   }
-                  className={`md:max-w-[900px] w-full flex message${
+                  className={`md:max-w-[900px] w-full flex message pt-3 pl-3 pr-3 ${
                     message.role === "user"
-                      ? " user justify-end items-start "
+                      ? " user justify-end items-start pt-4"
                       : " assistant justify-start items-start"
                   } ${index === messages.length - 1 ? "min-h-full" : ""}`}
                   id={index === messages.length - 1 ? "last-message" : ""}
@@ -467,7 +485,7 @@ function ChatWindow() {
                       message.role === "user"
                         ? "max-w-[85%] flex items-end self-start"
                         : "w-full"
-                    } rounded-3xl pt-2 pb-2 pl-4 pr-4 ${
+                    } rounded-tl-3xl rounded-tr-3xl rounded-bl-3xl rounded-br-[6px] pl-2 pr-2 ${
                       message.role === "user"
                         ? "bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                         : "bg-transparent"
@@ -479,43 +497,64 @@ function ChatWindow() {
                           ? message.content.map((item, idx) => {
                               if (typeof item.content === "string") {
                                 return (
-                                  <div key={idx} className="text-base leading-relaxed m-2">
+                                  <div
+                                    key={idx}
+                                    className="text-base leading-relaxed m-2"
+                                  >
                                     {item.content}
                                   </div>
                                 );
                               }
                               if (typeof item.content === "object") {
-                                if ("kind" in item.content && item.content.kind === "image-url") {
+                                if (
+                                  "kind" in item.content &&
+                                  item.content.kind === "image-url"
+                                ) {
                                   return (
                                     <div key={idx} className="flex justify-end">
                                       <img
-                                        src={item.content.serverUrl || item.content.url}
+                                        src={
+                                          item.content.serverUrl ||
+                                          item.content.url
+                                        }
                                         alt="Uploaded content"
                                         className="h-80 w-80 object-cover rounded-xl shadow-lg hover:shadow-xl transition-shadow mt-4 ml-4 mr-4"
                                       />
                                     </div>
                                   );
                                 }
-                                if ("content" in item.content && typeof item.content.content === "string") {
+                                if (
+                                  "content" in item.content &&
+                                  typeof item.content.content === "string"
+                                ) {
                                   return (
-                                    <div key={idx} className="text-base leading-relaxed m-2">
+                                    <div
+                                      key={idx}
+                                      className="text-base leading-relaxed m-2"
+                                    >
                                       {item.content.content}
                                     </div>
                                   );
                                 }
                               }
                               return (
-                                <div key={idx} className="text-base leading-relaxed m-2">
+                                <div
+                                  key={idx}
+                                  className="text-base leading-relaxed m-2"
+                                >
                                   {JSON.stringify(item.content)}
                                 </div>
                               );
                             })
-                          : (message.content as string)}
+                          : <div className="text-base leading-relaxed m-2">
+                              {message.content as string}
+                            </div>}
                       </div>
                     ) : (
                       <AssistantMessageRenderer
                         fullContent={message.content as string}
                         gettingResponse={gettingResponse}
+                        reasoning={message.reasoning}
                       />
                     )}
                   </div>

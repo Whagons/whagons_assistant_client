@@ -6,7 +6,7 @@ import threading
 import queue
 from typing import Optional, Dict, Any, Tuple
 
-from custom.tools import RunContext
+from pydantic_ai.tools import RunContext
 
 def python_interpreter(
     ctx: RunContext, code: str

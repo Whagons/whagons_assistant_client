@@ -8,6 +8,7 @@ RT = TypeVar("RT")
 DEFAULT_SYSTEM = "You are a helpful friendly assistant. Please answer clearly and concisely. You are part of a home assitant system, only use tools calls after asking the user"
 
 
+
 class RunResult:
     def __init__(self, message: Message, message_history: List[Message]):
         self.message = message

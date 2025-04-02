@@ -5,7 +5,7 @@ from typing import overload
 
 from httpx import AsyncClient as AsyncHTTPClient
 
-from custom.models import cached_async_http_client
+from pydantic_ai.models import cached_async_http_client
 
 try:
     from groq import AsyncGroq

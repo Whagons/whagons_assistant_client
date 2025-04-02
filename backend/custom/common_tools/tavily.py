@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import TypeAdapter
 from typing_extensions import TypedDict
 
-from custom.tools import Tool
+from pydantic_ai.tools import Tool
 
 try:
     from tavily import AsyncTavilyClient

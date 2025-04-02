@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from ai.Manager import MyDeps, create_agent, get_system_prompt
 from ai.assistant_functions.memory_functions import get_memory_no_context
-from custom.messages import (
+from pydantic_ai.messages import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
     ModelMessage,
@@ -15,8 +15,7 @@ from custom.messages import (
     ModelResponse,
     PartDeltaEvent,
     PartStartEvent,
-    ReasoningPart,
-    ReasoningPartDelta,
+    
     RetryPromptPart,
     SystemPromptPart,
     TextPart,
@@ -24,11 +23,15 @@ from custom.messages import (
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
+    ReasoningPart,
+    ReasoningPartDelta,
     ImageUrl,
     AudioUrl,
     DocumentUrl,
     BinaryContent,
 )
+# ReasoningPart,
+# ReasoningPartDelta,
 from helpers.helper_funcs import geminiParts
 from ai.models import get_session, User, Conversation, Message as DBMessage
 from models.general import ConversationCreate, MessageCreate
@@ -162,62 +165,63 @@ async def chat(
                 request.state.user, memory
             )
 
-    agent = create_agent(current_user, memory)
+    agent = await create_agent(current_user, memory)
 
     user_content = chat_request.to_user_content()
 
     
     async def generate_chunks() -> AsyncGenerator[str, None]:
-        async with agent.iter(
-            deps=MyDeps(user_object=current_user),
-            user_prompt=user_content,
-            message_history=message_history,
-        ) as run:
-            async for node in run:
-                # print("Node type:", type(node))
-                # print(node)
-                if agent.is_user_prompt_node(node):
-                    # print user node
-                    pass
-                elif agent.is_model_request_node(node):
-                    async with node.stream(run.ctx) as request_stream:
-                        async for event in request_stream:
-                            if isinstance(event, PartStartEvent):
-                                if isinstance(event.part, TextPart):
-                                    yield (
-                                        "data: " + event_to_json_string(event) + "\n\n"
-                                    )
-                                elif isinstance(event.part, ReasoningPart):
-                                    yield (
-                                        "data: " + event_to_json_string(event) + "\n\n"
-                                    )
-                            elif isinstance(event, PartDeltaEvent):
-                                if isinstance(event.delta, TextPartDelta):
-                                    yield (
-                                        "data: " + event_to_json_string(event) + "\n\n"
-                                    )
-                                elif isinstance(event.delta, ReasoningPartDelta):
-                                    yield (
-                                        "data: " + event_to_json_string(event) + "\n\n"
-                                    )
-                    db_message = DBMessage(
-                        content=json.dumps(model_message_to_dict(node.request)),
-                        is_user_message=False,
-                        conversation_id=conversation_id,
-                    )
-                    session.add(db_message)
-                    session.commit()
-                elif agent.is_call_tools_node(node):
-                    async with node.stream(run.ctx) as handle_stream:
-                        async for event in handle_stream:
-                            yield "data: " + event_to_json_string(event) + "\n\n"
-                    db_message = DBMessage(
-                        content=json.dumps(model_message_to_dict(node.model_response)),
-                        is_user_message=False,
-                        conversation_id=conversation_id,
-                    )
-                    session.add(db_message)
-                    session.commit()
+        async with agent.run_mcp_servers():
+            async with agent.iter(
+                deps=MyDeps(user_object=current_user),
+                user_prompt=user_content,
+                message_history=message_history,
+            ) as run:
+                async for node in run:
+                    # print("Node type:", type(node))
+                    # print(node)
+                    if agent.is_user_prompt_node(node):
+                        # print user node
+                        pass
+                    elif agent.is_model_request_node(node):
+                        async with node.stream(run.ctx) as request_stream:
+                            async for event in request_stream:
+                                if isinstance(event, PartStartEvent):
+                                    if isinstance(event.part, TextPart):
+                                        yield (
+                                            "data: " + event_to_json_string(event) + "\n\n"
+                                        )
+                                    elif isinstance(event.part, ReasoningPart):
+                                        yield (
+                                            "data: " + event_to_json_string(event) + "\n\n"
+                                        )
+                                elif isinstance(event, PartDeltaEvent):
+                                    if isinstance(event.delta, TextPartDelta):
+                                        yield (
+                                            "data: " + event_to_json_string(event) + "\n\n"
+                                        )
+                                    elif isinstance(event.delta, ReasoningPartDelta):
+                                        yield (
+                                            "data: " + event_to_json_string(event) + "\n\n"
+                                        )
+                        db_message = DBMessage(
+                            content=json.dumps(model_message_to_dict(node.request)),
+                            is_user_message=False,
+                            conversation_id=conversation_id,
+                        )
+                        session.add(db_message)
+                        session.commit()
+                    elif agent.is_call_tools_node(node):
+                        async with node.stream(run.ctx) as handle_stream:
+                            async for event in handle_stream:
+                                yield "data: " + event_to_json_string(event) + "\n\n"
+                        db_message = DBMessage(
+                            content=json.dumps(model_message_to_dict(node.model_response)),
+                            is_user_message=False,
+                            conversation_id=conversation_id,
+                        )
+                        session.add(db_message)
+                        session.commit()
 
     return StreamingResponse(
         generate_chunks(),
@@ -463,7 +467,7 @@ def event_to_dict(event):
         return {
             "tool_result": {
                 "name": event.result.tool_name,
-                "content": event.result.content,
+                "content": str(event.result.content) if not isinstance(event.result.content, str) else event.result.content,
                 "tool_call_id": event.result.tool_call_id,
                 "timestamp": event.result.timestamp.isoformat(),
             },
@@ -546,10 +550,17 @@ def model_message_to_dict(message: Union[ModelRequest, ModelResponse]) -> dict:
                 "type": "ToolReturnPart",
                 "content": {
                     "name": part.tool_name,
-                    "content": part.content,
+                    "content": str(part.content) if not isinstance(part.content, str) else part.content,
                     "tool_call_id": part.tool_call_id,
                 },
                 "part_kind": getattr(part, "part_kind", "text"),
+            }
+        # Handle CallToolResult type
+        if cls_name == "CallToolResult":
+            return {
+                "type": "CallToolResult",
+                "content": str(part),
+                "part_kind": "text"
             }
         return {
             "type": cls_name,

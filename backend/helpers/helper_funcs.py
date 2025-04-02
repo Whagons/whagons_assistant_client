@@ -1,7 +1,7 @@
-from custom.models.gemini import GeminiModel
-from custom.providers.google_gla import GoogleGLAProvider
-from custom import Agent
-from custom.messages import UserContent
+from pydantic_ai.models.gemini import GeminiModel
+from pydantic_ai.providers.google_gla import GoogleGLAProvider
+from pydantic_ai import Agent
+from pydantic_ai.messages import UserContent
 import os
 
 async def gemini(prompt: str) -> str:

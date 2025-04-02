@@ -5,21 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "aiohttp>=3.11.13",
-    "fastapi>=0.115.11",
-    "logfire[fastapi,sqlite3]>=3.7.1",
-    "pydantic-ai-slim[duckduckgo,tavily]>=0.0.41",
-    "python-dotenv>=1.0.1",
-    "python-multipart>=0.0.20",
-    "requests>=2.32.3",
+    "fastapi>=0.115.12",
+    "pydantic-ai-slim[tavily]>=0.0.49",
+    "pydantic-ai[logfire]>=0.0.49",
+    "python-dotenv>=1.1.0",
     "uvicorn>=0.34.0",
-    "sqlmodel>=0.0.16",
-    "firebase-admin>=6.6.0",
-    "cryptography>=44.0.2",
-    "pydantic-ai>=0.0.41",
-    "mem0ai[graph]>=0.1.77",
-    "litellm>=1.64.1",
-    "langchain-neo4j>=0.4.0",
-    "rank-bm25>=0.2.2",
-    "httpx>=0.27.0",
 ]
