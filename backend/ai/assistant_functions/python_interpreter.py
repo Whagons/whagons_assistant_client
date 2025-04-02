@@ -13,26 +13,21 @@ def python_interpreter(
 ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
     """
     Executes Python code in the current environment.
-    You can execute native functions by appending _no_ctx to the function name.
+    You can execute graph functions by appending _no_ctx to the function name.
     Currently available no_ctx functions are from user_functions and channel_functions.
     
     To use no_ctx functions, import them directly from their respective modules.
     Do no user default_api or anything like that simply import the function and use it.
 
     Example imports:
-        from ai.assistant_functions.user_functions import create_user_no_ctx, list_users_no_ctx
-        from ai.assistant_functions.channel_functions import create_standard_channel_no_ctx, list_channels_no_ctx
+        from ai.assistant_functions.graph import graph_api_request_no_ctx
     
     Example usage:
-        # Create a user
-        user, error = create_user_no_ctx(
-            display_name="John Doe",
-            user_principal_name="john.doe@example.com",
-            password="SecurePassword123!"
-        )
+        # List users
+        users, error = graph_api_request_no_ctx(method='GET', path='/users', query_params={'$select': 'id'})
         
         # List channels
-        channels, error = list_channels_no_ctx(team_id="team123")
+        channels, error = graph_api_request_no_ctx(method='GET', path='/teams/{{team-id}}/channels', query_params={'$select': 'id,displayName'})
     
     Args:
         code (str): The Python code to execute.
