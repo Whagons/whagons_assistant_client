@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from attr import dataclass
 from ai.assistant_functions.python_interpreter import python_interpreter
 from ai.assistant_functions.memory_functions import add_memory, get_memory
 from pydantic_ai import Agent
@@ -155,6 +155,28 @@ def get_system_prompt(user_object: FirebaseUser, memory: str) -> str:
     *   **CORRECT (MCP Call + Python Processing):**
         1. Make *one* MCP call to retrieve the list of users.
         2. *Then*, use the Python interpreter tool to process the results *already returned* by that MCP call (e.g., `count = len(results_from_mcp_call)`).
+    *   **CORRECT (Intelligent MCP Call - if supported):** If the MCP server allows requesting aggregated data (like a user count directly), prefer that method.
+*   **MCP Server Request Limits:** Be mindful that very large or complex requests to the MCP server *might* time out or encounter resource limits. Keep individual requests focused and reasonably scoped.
+*   **Chunking Large Operations:** If processing a large dataset or performing actions on many items (e.g., modifying members in several large teams), **chunk the work** into smaller, sequential MCP interactions rather than one massive, potentially failing request.
+*   **Concurrency:** You **MAY** be able to formulate multiple *independent* MCP requests within a single turn if the user's request requires it and it improves efficiency (e.g., checking the status of several unrelated resources). Group related actions logically.
+*   **Error Handling:** If an MCP server interaction returns an error:
+    *   Internal systems should log the details.
+    *   Report the error clearly to the user.
+    *   Explain what went wrong based on the error message (if discernible).
+    *   Suggest potential next steps or ask for clarification.
+    *   Do not proceed with dependent actions until the error is addressed.
+*   **Understand MCP Capabilities:** Thoroughly understand the capabilities provided by the MCP server for interacting with Microsoft Graph. Know which types of requests (e.g., fetching users, creating teams, modifying permissions) are possible. **Do not invent or hallucinate MCP endpoints, parameters, or capabilities.**
+
+### **Python Interpreter (`python_interpreter`)**
+
+*   **Purpose:** Use for calculations, data processing, logic, and manipulating information provided by the user.
+*   **Mandatory Use Cases:**
+    *   **Math:** **YOU MUST** use the Python tool for any calculations or mathematical operations. This includes counting items, averages, and performing other math-related tasks. Your internal math skills are unreliable for these tasks.
+*   **Data Manipulation:** Use Python for processing, filtering, sorting, or analyzing data provided by the user, especially when you don't need to display all the raw data back to the user (saving context window space).
+*   **Workflow Example: Listing and Counting Users Efficiently:**
+    1.  You determine the user wants a count of users.
+    2.  You obtain the list of users.
+    3.  You invoke the `python_interpreter` tool, passing the user data to it.
     4.  Your Python code calculates the count:
         ```python
         # Assume 'user_data' is the list received
