@@ -319,7 +319,7 @@ class GroqModel(Model):
     @staticmethod
     def _map_tool_call(t: ToolCallPart) -> chat.ChatCompletionMessageToolCallParam:
         return chat.ChatCompletionMessageToolCallParam(
-            id=_guard_tool_call_id(t=t, model_source='Groq'),
+            id=_guard_tool_call_id(t=t),
             type='function',
             function={'name': t.tool_name, 'arguments': t.args_as_json_str()},
         )
@@ -345,7 +345,7 @@ class GroqModel(Model):
             elif isinstance(part, ToolReturnPart):
                 yield chat.ChatCompletionToolMessageParam(
                     role='tool',
-                    tool_call_id=_guard_tool_call_id(t=part, model_source='Groq'),
+                    tool_call_id=_guard_tool_call_id(t=part, ),
                     content=part.model_response_str(),
                 )
             elif isinstance(part, RetryPromptPart):
@@ -354,7 +354,7 @@ class GroqModel(Model):
                 else:
                     yield chat.ChatCompletionToolMessageParam(
                         role='tool',
-                        tool_call_id=_guard_tool_call_id(t=part, model_source='Groq'),
+                        tool_call_id=_guard_tool_call_id(t=part, ),
                         content=part.model_response(),
                     )
 

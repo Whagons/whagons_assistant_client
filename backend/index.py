@@ -12,6 +12,7 @@ import fastapi
 import firebase_admin
 from firebase_admin import credentials
 from routes.chats_router import chats_router, ws_chats_router
+from routes.conversations_router import conversations_router
 from routes.user_routes import user_router
 from routes.files_router import files_router
 from routes.local_files_router import local_files_router
@@ -116,6 +117,14 @@ chat_routes.include_router(chats_router)
 # WebSocket routes cannot use HTTP dependency injection; expose under same prefix without auth dependency
 ws_chat_routes = APIRouter(prefix="/api/v1", tags=["chat-ws"])
 ws_chat_routes.include_router(ws_chats_router)
+
+#####################################################
+# Conversations Router Configuration
+#####################################################
+conversations_routes = APIRouter(prefix="/api/v1", tags=["conversations"])
+# Add Firebase authentication dependency to base router, needs base role
+conversations_routes.dependencies.append(Depends(role_based_access(["whitelisted"])))
+conversations_routes.include_router(conversations_router)
 
 #####################################################
 
@@ -235,6 +244,7 @@ async def custom_swagger_ui_html():
 #include routers in main
 app.include_router(chat_routes)
 app.include_router(ws_chat_routes)
+app.include_router(conversations_routes)
 app.include_router(user_routes)
 app.include_router(files_routes)
 app.include_router(local_files_routes)

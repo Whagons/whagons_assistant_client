@@ -20,7 +20,7 @@ class DefaultApi:
     def __init__(self):
         self.graph_api_request = graph_api_request_no_ctx
 
-def python_interpreter(
+def python(
     ctx: RunContext, code: str
 ) -> Union[str, Dict[str, Any]]:
     """
@@ -94,7 +94,7 @@ def python_interpreter(
                     "user_id": ctx.deps.user_object.uid if ctx and ctx.deps and ctx.deps.user_object else None
                 }
                 error_result = error_logger.log_error(
-                    function_name="python_interpreter",
+                    function_name="python",
                     error_text="Code execution produced errors",
                     parameters=error_params,
                     stack_trace=traceback.format_exc()
@@ -107,7 +107,7 @@ def python_interpreter(
                     "user_id": ctx.deps.user_object.uid if ctx and ctx.deps and ctx.deps.user_object else None
                 }
                 error_result = error_logger.log_error(
-                    function_name="python_interpreter",
+                    function_name="python",
                     error_text="Code execution printed an error message to stdout",
                     parameters=error_params,
                     stack_trace=None
@@ -125,7 +125,7 @@ def python_interpreter(
                 "user_id": ctx.deps.user_object.uid if ctx and ctx.deps and ctx.deps.user_object else None
             }
             error_result = error_logger.log_error(
-                function_name="python_interpreter",
+                function_name="python",
                 error_text=f"Execution error: {str(e)}",
                 parameters=error_params,
                 stack_trace=traceback.format_exc()
@@ -153,7 +153,7 @@ def python_interpreter(
             "user_id": ctx.deps.user_object.uid if ctx and ctx.deps and ctx.deps.user_object else None
         }
         error_result = error_logger.log_error(
-            function_name="python_interpreter",
+            function_name="python",
             error_text="Code execution exceeded 30 second timeout",
             parameters=error_params,
             stack_trace=traceback.format_exc()

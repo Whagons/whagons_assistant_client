@@ -435,6 +435,20 @@ function ChatWindow() {
               currentMessageState[currentMessageState.length - 1] = updated;
             }
           }
+        } else if (data.type === "content_chunk" && data.data) {
+          // Handle optimized content chunks
+          if (lastMessage?.role === "assistant") {
+            const updated = { ...lastMessage } as Message;
+            if (typeof lastMessage.content === "string") {
+              const newContent = (lastMessage.content as string) + data.data;
+              updated.content = newContent;
+              debug('content_chunk', { addLen: data.data.length, totalLen: newContent.length })
+              messagesChanged = true;
+            }
+            if (messagesChanged) {
+              currentMessageState[currentMessageState.length - 1] = updated;
+            }
+          }
         } else if (data.type === "tool_call" && data.data?.tool_call) {
           debug('tool_call', Object.keys(data.data.tool_call ?? {}))
           const newToolCallMessage: Message = { role: "tool_call", content: data.data.tool_call };

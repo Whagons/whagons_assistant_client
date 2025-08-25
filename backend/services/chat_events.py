@@ -158,7 +158,7 @@ def event_to_dict(event):
             return {
                 "index": event.index,
                 "part": {
-                    "content": event.part.content,
+                    "reasoning": event.part.reasoning,
                     "part_kind": event.part.part_kind,
                 },
                 "event_kind": event.event_kind,
@@ -181,8 +181,7 @@ def event_to_dict(event):
                 "delta": {
                     # normalize to `content` for deltas as well
                     "content": getattr(event.delta, "reasoning_delta", None)
-                               or getattr(event.delta, "content_delta", None)
-                               or getattr(event.delta, "reasoning_delta", None),
+                               or getattr(event.delta, "content_delta", None),
                     "part_kind": event.delta.part_delta_kind,
                 },
                 "event_kind": event.event_kind,
@@ -266,7 +265,7 @@ def model_message_to_dict(message: Union[ModelRequest, ModelResponse], user_reje
         if isinstance(part, ReasoningPart):
             return {
                 "type": "ReasoningPart",
-                "content": part.content,
+                "content": part.reasoning,
                 "part_kind": getattr(part, "part_kind", "reasoning"),
             }
         if isinstance(part, UserPromptPart):

@@ -15,8 +15,8 @@ from services.chat_events import get_message_history
 from services.chat_session import get_or_create_session, chat_sessions
 
 
-from models.general import (
-    DocumentUrlContent, 
+from models.chat_models import (
+    DocumentUrlContent,
     ChatRequest,
 )
 

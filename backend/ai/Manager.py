@@ -1,8 +1,8 @@
-from attr import dataclass
+from dataclasses import dataclass
 # from sqlmodel import Session
 # from ai.models import engine
 from ai.assistant_functions.graph import graph_api_request
-from ai.assistant_functions.python_interpreter import python_interpreter
+from ai.assistant_functions.python_interpreter import python
 from ai.assistant_functions.memory_functions import add_memory, get_memory
 from ai.assistant_functions.workflow_functions import (
     create_workflow,
@@ -53,7 +53,7 @@ client_secret = os.getenv("SECRET")
 tavily_api_key = os.getenv("TAVILY_API_KEY")
 
 
-assert tavily_api_key is not None
+# Make Tavily optional; don't crash if key is missing
 
 # Create a custom HTTP client with 5-minute timeout
 http_client = cached_async_http_client(timeout=300, connect=5)
@@ -440,7 +440,7 @@ async def create_agent(user_object: FirebaseUser, memory: str, has_pdfs: bool = 
         tools=[
             tavily_search_tool(tavily_api_key),
             graph_api_request,
-            python_interpreter,
+            python,
             add_memory,
             get_memory,
             # Workflow management tools

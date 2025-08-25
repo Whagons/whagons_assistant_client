@@ -1,9 +1,5 @@
-import { Component, Show, Accessor, createMemo, createSignal, createEffect } from "solid-js";
-import { SolidMarkdown } from "solid-markdown";
-import remarkGfm from "remark-gfm";
-import remarkBreaks from "remark-breaks";
-import supersub from "remark-supersub";
-import CustomPre from "./CustomPre";
+import { Component, Show, Accessor, createMemo, createSignal, createEffect, createResource } from "solid-js";
+import MarkdownRenderer from "./MarkdownRenderer";
 import { ContentItem } from "../models/models";
 import Prism from "prismjs";
 
@@ -27,6 +23,85 @@ const AssistantMessageRenderer: Component<AssistantMessageProps> = (props) => {
 
   const content = createMemo(() => props.fullContent());
   const reasoning = createMemo(() => (props.reasoning ? props.reasoning() : undefined));
+
+  // Buffered content renderer for performance optimization
+  const [bufferedContent, setBufferedContent] = createSignal("");
+  const [renderTrigger, setRenderTrigger] = createSignal(0);
+
+  // Content accumulation logic
+  createEffect(() => {
+    const rawContent = String(content() || "");
+    if (!rawContent) {
+      setBufferedContent("");
+      return;
+    }
+
+    // If response is complete, render everything immediately
+    if (!props.gettingResponse) {
+      setBufferedContent(rawContent);
+      setRenderTrigger(prev => prev + 1);
+      return;
+    }
+
+    // During streaming, use intelligent buffering
+    const currentBuffered = bufferedContent();
+    if (rawContent.length > currentBuffered.length) {
+      const newContent = rawContent.slice(currentBuffered.length);
+
+      // Accumulate content and check for structural boundaries
+      let shouldRender = false;
+      let accumulatedBuffer = currentBuffered + newContent;
+
+      // Check for table row completion (ends with | followed by newline)
+      if (accumulatedBuffer.includes('|') && /\|\s*$/m.test(accumulatedBuffer)) {
+        // Look for complete table rows
+        const lines = accumulatedBuffer.split('\n');
+        let tableRowCount = 0;
+        let inTable = false;
+
+        for (const line of lines) {
+          if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+            tableRowCount++;
+            inTable = true;
+          } else if (inTable && line.trim() === '') {
+            // Empty line after table - good render point
+            shouldRender = true;
+            break;
+          } else if (inTable && !line.trim().startsWith('|')) {
+            // Left table context - render accumulated rows
+            shouldRender = tableRowCount >= 3; // At least header + separator + 1 data row
+            break;
+          }
+        }
+      }
+
+      // Check for code block completion
+      if (accumulatedBuffer.includes('```')) {
+        const codeBlockMatches = accumulatedBuffer.match(/```[\s\S]*?```/g);
+        if (codeBlockMatches && codeBlockMatches.length > 0) {
+          const lastBlock = codeBlockMatches[codeBlockMatches.length - 1];
+          if (lastBlock.endsWith('```')) {
+            shouldRender = true;
+          }
+        }
+      }
+
+      // Check for paragraph completion (double newline)
+      if (accumulatedBuffer.includes('\n\n')) {
+        shouldRender = true;
+      }
+
+      // Force render every 1000 characters to prevent memory issues
+      if (accumulatedBuffer.length - currentBuffered.length > 1000) {
+        shouldRender = true;
+      }
+
+      if (shouldRender) {
+        setBufferedContent(accumulatedBuffer);
+        setRenderTrigger(prev => prev + 1);
+      }
+    }
+  });
 
   createEffect(() => {
     if (containerRef) {
@@ -55,12 +130,7 @@ const AssistantMessageRenderer: Component<AssistantMessageProps> = (props) => {
           </button>
           <Show when={isReasoningOpen()}>
             <div class="mt-2 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <SolidMarkdown
-                components={{ pre: CustomPre }}
-                children={(reasoning() as string) || ""}
-                remarkPlugins={[remarkGfm, remarkBreaks, supersub]}
-                rehypePlugins={[]}
-              />
+              <pre class="whitespace-pre-wrap text-sm font-mono">{(reasoning() as string) || ""}</pre>
             </div>
           </Show>
         </div>
@@ -68,12 +138,20 @@ const AssistantMessageRenderer: Component<AssistantMessageProps> = (props) => {
 
       <div class="markdown-content">
         <Show when={typeof content() === "string"}>
-          <SolidMarkdown
-            components={{ pre: CustomPre }}
-            children={String(content() || "")}
-            remarkPlugins={[remarkGfm, remarkBreaks, supersub]}
-            rehypePlugins={[]}
-          />
+          <div>
+            <MarkdownRenderer
+              isStreaming={props.gettingResponse && props.isLast()}
+            >
+              {bufferedContent() || (props.gettingResponse ? "" : String(content() || ""))}
+            </MarkdownRenderer>
+            <Show when={props.gettingResponse && props.isLast()}>
+              <span class="loading-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+            </Show>
+          </div>
         </Show>
 
         <Show when={isContentItemArray(content())}>
@@ -88,14 +166,6 @@ const AssistantMessageRenderer: Component<AssistantMessageProps> = (props) => {
           <pre class="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded-md overflow-auto">
             {JSON.stringify(content(), null, 2)}
           </pre>
-        </Show>
-
-        <Show when={props.gettingResponse && props.isLast()}>
-          <span class="loading-dots">
-            <span></span>
-            <span></span>
-            <span></span>
-          </span>
         </Show>
       </div>
     </div>

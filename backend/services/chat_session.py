@@ -2,16 +2,14 @@ import asyncio
 import json
 import os
 import logging
+import re
 from datetime import datetime
 from typing import List, Union, Dict
 
 from pydantic_ai.messages import (
     PartDeltaEvent,
     PartStartEvent,
-    TextPart,
     ReasoningPart,
-    ReasoningPartDelta,
-    TextPartDelta,
     ImageUrl,
     AudioUrl,
     DocumentUrl,
@@ -38,9 +36,113 @@ class ChatSession:
         # Streaming debug logger (enable with env STREAM_DEBUG=1)
         self._stream_debug = os.getenv("STREAM_DEBUG", "0") == "1"
         self._logger = logging.getLogger("chat.stream")
+        # Content accumulation for optimized streaming
+        self._content_buffer = ""
+        self._table_detected = False
+        self._chunk_size = 500  # Characters per chunk
+        self._table_chunk_size = 1000  # Larger chunks for tables
 
     def is_running(self) -> bool:
         return self.task is not None and not self.task.done()
+
+    def _detect_table_context(self, content: str) -> bool:
+        """Detect if content contains table markdown"""
+        return '|' in content and '\n|' in content
+
+    def _find_table_row_boundary(self, content: str) -> int:
+        """Find the end of a complete table row"""
+        lines = content.split('\n')
+        in_table = False
+        table_rows = 0
+
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if line.startswith('|') and line.endswith('|'):
+                in_table = True
+                table_rows += 1
+
+                # If we have a header + separator + at least one data row, consider it complete
+                if table_rows >= 3:
+                    return len('\n'.join(lines[:i+1]))
+            elif in_table and line == '':
+                # Empty line after table - good boundary
+                return len('\n'.join(lines[:i]))
+            elif in_table and not line.startswith('|'):
+                # Left table context
+                return len('\n'.join(lines[:i]))
+
+        return len(content)  # No boundary found
+
+    def _find_code_block_boundary(self, content: str) -> int:
+        """Find the end of a complete code block"""
+        code_block_pattern = r'```[\s\S]*?```'
+        match = re.search(code_block_pattern, content)
+        if match:
+            return match.end()
+        return len(content)
+
+    def _find_paragraph_boundary(self, content: str) -> int:
+        """Find paragraph boundaries (double newlines)"""
+        double_newline = content.find('\n\n')
+        if double_newline != -1:
+            return double_newline + 2
+        return len(content)
+
+    def _should_flush_buffer(self, new_content: str) -> bool:
+        """Determine if we should flush the accumulated buffer"""
+        combined = self._content_buffer + new_content
+
+        # Check for table boundaries
+        if self._detect_table_context(combined):
+            return self._find_table_row_boundary(combined) < len(combined)
+
+        # Check for code block boundaries
+        if '```' in combined:
+            return self._find_code_block_boundary(combined) < len(combined)
+
+        # Check for paragraph boundaries
+        if '\n\n' in combined:
+            return True
+
+        # Check size limits
+        chunk_size = self._table_chunk_size if self._table_detected else self._chunk_size
+        return len(combined) >= chunk_size
+
+    def _get_optimal_chunk(self, new_content: str) -> str:
+        """Get the optimal chunk of content to send"""
+        combined = self._content_buffer + new_content
+
+        if self._detect_table_context(combined):
+            self._table_detected = True
+            boundary = self._find_table_row_boundary(combined)
+            if boundary < len(combined):
+                chunk = combined[:boundary]
+                self._content_buffer = combined[boundary:]
+                return chunk
+
+        if '```' in combined:
+            boundary = self._find_code_block_boundary(combined)
+            if boundary < len(combined):
+                chunk = combined[:boundary]
+                self._content_buffer = combined[boundary:]
+                return chunk
+
+        if '\n\n' in combined:
+            boundary = self._find_paragraph_boundary(combined)
+            chunk = combined[:boundary]
+            self._content_buffer = combined[boundary:]
+            return chunk
+
+        # Default chunking based on size
+        chunk_size = self._table_chunk_size if self._table_detected else self._chunk_size
+        if len(combined) >= chunk_size:
+            chunk = combined[:chunk_size]
+            self._content_buffer = combined[chunk_size:]
+            return chunk
+
+        # Accumulate more content
+        self._content_buffer = combined
+        return ""
 
     async def stop(self) -> None:
         if self.task and not self.task.done():
@@ -91,6 +193,10 @@ class ChatSession:
                             except Exception:
                                 self._logger.info("conv=%s node=%s", self.conversation_id, type(node).__name__)
                         if isinstance(node, End):
+                            # Flush any remaining buffered content
+                            if self._content_buffer:
+                                await self._emit(json.dumps({"type": "content_chunk", "data": self._content_buffer}))
+                                self._content_buffer = ""
                             break
                         if isinstance(node, ModelRequestNode):
                             db_message_request = DBMessage(
@@ -105,7 +211,8 @@ class ChatSession:
                             session.commit()
 
                             async with node.stream(run.ctx) as request_stream:
-                                
+                                content_accumulator = ""
+
                                 async for event in request_stream:
                                     if self._stream_debug:
                                         print(event)
@@ -118,7 +225,54 @@ class ChatSession:
                                         if self._stream_debug:
                                             kind = getattr(event.delta, 'part_delta_kind', type(event.delta).__name__)
                                             self._logger.info("conv=%s event=part_delta kind=%s", self.conversation_id, kind)
-                                        await self._emit(event_to_json_string(event))
+
+                                        # Handle text content specifically for chunking
+                                        if (hasattr(event.delta, 'content_delta') and event.delta.content_delta) or \
+                                           (hasattr(event.delta, 'part_delta_kind') and event.delta.part_delta_kind == 'text'):
+                                            content_delta = getattr(event.delta, 'content_delta', None) or \
+                                                          getattr(event.delta, 'content', '')
+                                            if content_delta:
+                                                content_accumulator += content_delta
+
+                                                # Check if we should flush accumulated content
+                                                if self._should_flush_buffer(content_accumulator):
+                                                    chunk = self._get_optimal_chunk(content_accumulator)
+                                                    if chunk:
+                                                        # Send chunked content instead of individual deltas
+                                                        chunk_event = {
+                                                            "type": "content_chunk",
+                                                            "data": chunk,
+                                                            "conversation_id": self.conversation_id
+                                                        }
+                                                        await self._emit(json.dumps(chunk_event))
+                                                        content_accumulator = self._content_buffer
+                                                        self._content_buffer = ""
+                                                else:
+                                                    # Continue accumulating
+                                                    pass
+                                        else:
+                                            # Non-text events (tool calls, etc.) send immediately
+                                            await self._emit(event_to_json_string(event))
+
+                                # Flush any remaining accumulated content
+                                if content_accumulator:
+                                    chunk = self._get_optimal_chunk(content_accumulator)
+                                    if chunk:
+                                        chunk_event = {
+                                            "type": "content_chunk",
+                                            "data": chunk,
+                                            "conversation_id": self.conversation_id
+                                        }
+                                        await self._emit(json.dumps(chunk_event))
+                                    # Send any remaining buffer
+                                    if self._content_buffer:
+                                        chunk_event = {
+                                            "type": "content_chunk",
+                                            "data": self._content_buffer,
+                                            "conversation_id": self.conversation_id
+                                        }
+                                        await self._emit(json.dumps(chunk_event))
+                                        self._content_buffer = ""
                         elif isinstance(node, CallToolsNode):
                             async with node.stream(run.ctx) as handle_stream:
                                 async for event in handle_stream:
@@ -149,7 +303,7 @@ class ChatSession:
                                             self._logger.info(
                                                 "conv=%s event=reasoning_final len=%s snippet=%s",
                                                 self.conversation_id,
-                                                len(part.content),
+                                                len(part.reasoning),
                                                 snippet,
                                             )
                                 except Exception:
