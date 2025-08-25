@@ -147,7 +147,7 @@ models = {
 }
 
 # Set default model
-model = "gpt-5-mini"
+model = "gpt-oss-120b-groq"
 
 
 logging.basicConfig(
