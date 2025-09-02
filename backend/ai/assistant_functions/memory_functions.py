@@ -1,8 +1,8 @@
-from ai.utils import extract_and_format_memory_data
+from ai.core.utils import extract_and_format_memory_data
 from pydantic_ai.tools import RunContext
 from typing import Tuple
 from dotenv import load_dotenv
-from ai.mem0_local import m
+from ai.core.mem0_local import m
 import logging
 from error_logger.error_logger import ErrorLogger
 import traceback

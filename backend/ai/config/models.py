@@ -1,0 +1,117 @@
+"""
+AI Model Configuration
+Centralized configuration for all AI models used in the system.
+"""
+
+from pydantic_ai.models.groq import GroqModel
+from pydantic_ai.providers.groq import GroqProvider
+from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.models.gemini import GeminiModel
+from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.providers.google_gla import GoogleGLAProvider
+from pydantic_ai.models import cached_async_http_client
+import os
+import logging
+
+# Create a custom HTTP client with 5-minute timeout
+http_client = cached_async_http_client(timeout=300, connect=5)
+
+# Define available models
+models = {
+    "gemini": GeminiModel(
+        "gemini-2.5-flash",
+        provider=GoogleGLAProvider(
+            api_key=os.getenv("GEMINI_API_KEY"), http_client=http_client
+        ),
+    ),
+    "flash-lite": GeminiModel(
+        "gemini-2.5-flash-lite",
+        provider=GoogleGLAProvider(
+            api_key=os.getenv("GEMINI_API_KEY"), http_client=http_client
+        ),
+    ),
+    "deepseek": GroqModel(
+        "deepseek-r1-distill-llama-70b",
+        provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
+    ),
+     "llama4-fast": GroqModel(
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
+    ),
+    "claude": OpenAIModel(
+        "anthropic/claude-sonnet-4",
+        provider=OpenAIProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        ),
+    ),
+     "llama4": OpenAIModel(
+        "meta-llama/llama-4-maverick",
+        provider=OpenAIProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        ),
+    ),
+    "gpt-4o-mini": OpenAIModel(
+        "gpt-4o-mini", provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"))
+    ),
+    "kimi": OpenAIModel(
+        "moonshotai/kimi-k2",
+        provider=OpenAIProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        ),
+    ),
+    "4.1": OpenAIModel(
+        "openai/gpt-4.1",
+        provider=OpenAIProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        ),
+    ),
+    "qwen3": OpenAIModel(
+        "qwen/qwen3-235b-a22b-07-25",
+        provider=OpenAIProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        ),
+    ),
+    "gpt-oss-120b-groq": GroqModel(
+        "openai/gpt-oss-120b",
+         provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
+    ),
+    "gpt-oss-120b-openrouter": OpenAIModel(
+        "openai/gpt-oss-120b",
+        provider=OpenAIProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        ),
+    ),
+    "gpt-5-mini": OpenAIModel(
+        "openai/gpt-5-mini",
+        provider=OpenAIProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        ),
+    ),
+    "gpt-5": OpenAIModel(
+        "openai/gpt-5",
+        provider=OpenAIProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        ),
+    ),
+}
+
+# Set default model
+DEFAULT_MODEL = "gpt-oss-120b-groq"
+
+def get_model(model_key: str = None):
+    """Get a model by key, fallback to default if not found."""
+    if model_key is None:
+        model_key = DEFAULT_MODEL
+    return models.get(model_key, models[DEFAULT_MODEL])
+
+def get_available_models():
+    """Get list of available model keys."""
+    return list(models.keys())

@@ -19,8 +19,9 @@ from pydantic_ai.messages import (
 from pydantic_ai._agent_graph import ModelRequestNode, CallToolsNode
 from pydantic_graph import End
 
-from ai.Manager import MyDeps, create_agent, get_system_prompt
-from ai.models import Conversation, Message as DBMessage, engine
+from ai.core.agent_factory import MyDeps, create_agent
+from ai.core.prompts import get_system_prompt
+from ai.database.models import Conversation, Message as DBMessage, engine
 from sqlmodel import Session as DBSession
 
 from services.chat_events import event_to_json_string, model_message_to_dict, get_message_history

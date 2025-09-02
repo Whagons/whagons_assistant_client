@@ -26,7 +26,7 @@ from requests.exceptions import RequestException
 m = None
 
 # Now import the module and memory function
-from ai.mem0_local import _add_memory_to_specific_group
+from ai.core.mem0_local import _add_memory_to_specific_group
 import logging
 from error_logger.error_logger import ErrorLogger
 

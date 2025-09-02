@@ -2,7 +2,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from requests import Session
 
-from ai.models import get_session, User, Conversation, Message as DBMessage
+from ai.database.models import get_session, User, Conversation, Message as DBMessage
 from models.general import ConversationCreate, MessageCreate
 
 conversations_router = APIRouter(prefix="/chats")

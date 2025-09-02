@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent))
 
-from ai.models import create_db_and_tables, engine
+from ai.database.models import create_db_and_tables, engine
 from sqlmodel import SQLModel, text
 from sqlalchemy import inspect
 

@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from requests import Session
 import asyncio
 
-from ai.Manager import MyDeps, get_system_prompt
+from ai.core.agent_factory import MyDeps
+from ai.core.prompts import get_system_prompt
 from ai.assistant_functions.memory_functions import get_memory_no_context
 from pydantic_ai.messages import ImageUrl  # noqa: F401
 from helpers.helper_funcs import geminiParts
-from ai.models import get_session, User, Conversation
+from ai.database.models import get_session, User, Conversation
 from fastapi.responses import JSONResponse
 from services.chat_events import get_message_history
 from services.chat_session import get_or_create_session, chat_sessions

@@ -22,10 +22,10 @@ import os
 import asyncio
 
 from helpers.Firebase_helpers import FirebaseUser, get_current_user, role_based_access
-from ai.models import (
+from ai.database.models import (
     create_db_and_tables,
 )
-from ai.workflow_scheduler import run_scheduler_background
+from ai.workflows.workflow_scheduler import run_scheduler_background
 from dotenv import load_dotenv
 
 

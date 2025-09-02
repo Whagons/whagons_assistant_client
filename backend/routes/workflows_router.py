@@ -12,7 +12,7 @@ import json
 import traceback
 import logging
 
-from ai.models import Workflow, WorkflowSchedule, WorkflowRun, WorkflowShare, get_session, engine
+from ai.database.models import Workflow, WorkflowSchedule, WorkflowRun, WorkflowShare, get_session, engine
 from croniter import croniter
 import pytz
 from helpers.Firebase_helpers import FirebaseUser, get_current_user
@@ -133,7 +133,7 @@ def run_workflow_in_thread(workflow_id: str, code: str, run_id: int, stop_event:
     writes all output (stdout, stderr, and logs) to the database in real-time.
     """
     import sys
-    from ai.workflow_context import get_assistant_workflow_context
+    from ai.workflows.workflow_context import get_assistant_workflow_context
     from sqlmodel import Session
 
     run_start_time = datetime.now(timezone.utc)
@@ -238,7 +238,7 @@ async def execute_workflow_code_streaming(workflow_id: str, code: str, session: 
     import queue
     
     # Get workflow context with injected functions including assistant workflow management
-    from ai.workflow_context import get_assistant_workflow_context
+    from ai.workflows.workflow_context import get_assistant_workflow_context
     workflow_context = get_assistant_workflow_context(workflow_id, session)
     
     # Create a queue to store the final result
@@ -376,7 +376,7 @@ async def execute_workflow_code(workflow_id: str, code: str, session: Session) -
     import queue
     
     # Get workflow context with injected functions including assistant workflow management
-    from ai.workflow_context import get_assistant_workflow_context
+    from ai.workflows.workflow_context import get_assistant_workflow_context
     workflow_context = get_assistant_workflow_context(workflow_id, session)
     
     # Create a queue to store the result

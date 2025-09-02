@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 from croniter import croniter
 import pytz
 
-from ai.models import Workflow, WorkflowSchedule, WorkflowRun, engine
+from ai.database.models import Workflow, WorkflowSchedule, WorkflowRun, engine
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -144,7 +144,7 @@ class WorkflowScheduler:
         import queue
         
         # Get workflow context with injected functions including assistant workflow management
-        from ai.workflow_context import get_assistant_workflow_context
+        from ai.workflows.workflow_context import get_assistant_workflow_context
         workflow_context = get_assistant_workflow_context(workflow_id)
         
         # Create a queue to store the result
