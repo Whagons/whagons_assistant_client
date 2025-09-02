@@ -10,7 +10,7 @@ from ai.core.prompts import get_system_prompt
 from ai.assistant_functions.memory_functions import get_memory_no_context
 from pydantic_ai.messages import ImageUrl  # noqa: F401
 from helpers.helper_funcs import geminiParts
-from db.models import get_session, User, Conversation
+from database.models import get_session, User, Conversation
 from fastapi.responses import JSONResponse
 from services.chat_events import get_message_history
 from services.chat_session import get_or_create_session, chat_sessions

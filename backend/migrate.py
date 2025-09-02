@@ -29,13 +29,13 @@ except Exception as e:
     print("[migrate] path bootstrap error:", e)
 
 try:
-    from db.models import engine, User, create_db_and_tables
+    from database.models import engine, User, create_db_and_tables
 except Exception as e:
-    print("[migrate] import db.models failed:", repr(e))
+    print("[migrate] import database.models failed:", repr(e))
     # Try relative import fallback if running from /app/backend
     try:
         sys.path.append(script_dir)
-        from db.models import engine, User, create_db_and_tables  # type: ignore
+        from database.models import engine, User, create_db_and_tables  # type: ignore
     except Exception as e2:
         print("[migrate] fallback import failed:", repr(e2))
         raise

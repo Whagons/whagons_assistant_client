@@ -1,5 +1,5 @@
 from sqlalchemy import text
-from db.models import engine
+from database.models import engine
 
 
 def main() -> None:

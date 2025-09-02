@@ -21,7 +21,7 @@ from pydantic_graph import End
 
 from ai.core.agent_factory import MyDeps, create_agent
 from ai.core.prompts import get_system_prompt
-from db.models import Conversation, Message as DBMessage, MessageType, engine
+from database.models import Conversation, Message as DBMessage, MessageType, engine
 from sqlmodel import Session as DBSession
 
 from services.chat_events import event_to_json_string, model_message_to_dict, get_message_history

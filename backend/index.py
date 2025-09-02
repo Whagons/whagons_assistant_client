@@ -34,7 +34,7 @@ import os
 import asyncio
 
 from helpers.Firebase_helpers import FirebaseUser, get_current_user, role_based_access
-from db.models import (
+from database.models import (
     create_db_and_tables,
 )
 from ai.workflows.workflow_scheduler import run_scheduler_background

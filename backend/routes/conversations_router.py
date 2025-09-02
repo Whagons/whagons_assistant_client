@@ -2,7 +2,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from requests import Session
 
-from db.models import get_session, User, Conversation, Message as DBMessage
+from database.models import get_session, User, Conversation, Message as DBMessage
 from models.general import ConversationCreate, MessageCreate
 from ai.config.models import get_available_models
 

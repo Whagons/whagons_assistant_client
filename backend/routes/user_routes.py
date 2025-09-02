@@ -10,7 +10,7 @@ from typing import List
 from pydantic import BaseModel
 from firebase_admin import auth
 from helpers.Firebase_helpers import FirebaseUser, get_current_user
-from db.models import get_session, User
+from database.models import get_session, User
 from requests import Session as DBSession
 from fastapi import Depends, Request
 
