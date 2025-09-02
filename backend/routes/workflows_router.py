@@ -12,7 +12,7 @@ import json
 import traceback
 import logging
 
-from ai.database.models import Workflow, WorkflowSchedule, WorkflowRun, WorkflowShare, get_session, engine
+from db.models import Workflow, WorkflowSchedule, WorkflowRun, WorkflowShare, get_session, engine
 from croniter import croniter
 import pytz
 from helpers.Firebase_helpers import FirebaseUser, get_current_user

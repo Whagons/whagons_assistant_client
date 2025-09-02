@@ -48,7 +48,7 @@ class MyDeps:
     conversation_id: Optional[str] = None  # Add conversation ID for file organization
 
 
-async def create_agent(user_object: FirebaseUser, memory: str, has_pdfs: bool = False) -> Agent:
+async def create_agent(user_object: FirebaseUser, memory: str, has_pdfs: bool = False, model_key: Optional[str] = None) -> Agent:
     """
     Create and configure an AI agent with appropriate model and tools.
 
@@ -80,13 +80,14 @@ async def create_agent(user_object: FirebaseUser, memory: str, has_pdfs: bool = 
     # Smart model selection
     if has_pdfs:
         # Force Gemini when PDFs are present (OpenAI doesn't support PDFs)
-        selected_model = models["gemini"]
-        model_name = "gemini-2.5-flash"
+        preferred_model_key = "gemini-2.5-flash"
+        selected_model = models.get(preferred_model_key, models[DEFAULT_MODEL])
+        model_name = getattr(selected_model, 'model_name', preferred_model_key)
         print(f"🤖 MODEL SELECTION: Using {model_name} due to PDF content")
         logging.info(f"Using Gemini model due to PDF content: {model_name}")
     else:
-        # Use user's preferred model (fallback to global default if missing)
-        preferred_model_key = DEFAULT_MODEL
+        # Use passed-in model key if provided; otherwise use user's preferred or default
+        preferred_model_key = model_key or getattr(user_object, 'prefered_model', None) or DEFAULT_MODEL
         selected_model = models.get(preferred_model_key, models[DEFAULT_MODEL])
 
         # Resolve a friendly model name for logs before logging

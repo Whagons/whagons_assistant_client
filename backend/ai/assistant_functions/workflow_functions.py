@@ -6,7 +6,7 @@ Provides tools for AI assistant to create, edit, and manage workflows with file 
 from typing import Dict, Union, Optional, Any, List
 from pydantic_ai import RunContext
 from sqlmodel import Session
-from ai.database.models import Workflow, WorkflowSchedule, User
+from db.models import Workflow, WorkflowSchedule, User
 from error_logger.error_logger import ErrorLogger
 import logging
 import json
@@ -51,7 +51,7 @@ def create_workflow(
         session = getattr(ctx.deps, 'session', None) if hasattr(ctx, 'deps') else None
         should_close_session = False
         if not session:
-            from ai.database.models import engine
+            from db.models import engine
             from sqlmodel import Session
             session = Session(engine)
             should_close_session = True
@@ -165,7 +165,7 @@ def update_workflow(
         session = getattr(ctx.deps, 'session', None) if hasattr(ctx, 'deps') else None
         should_close_session = False
         if not session:
-            from ai.database.models import engine
+            from db.models import engine
             from sqlmodel import Session
             session = Session(engine)
             should_close_session = True
@@ -253,7 +253,7 @@ def get_workflow(
         session = getattr(ctx.deps, 'session', None) if hasattr(ctx, 'deps') else None
         should_close_session = False
         if not session:
-            from ai.database.models import engine
+            from db.models import engine
             from sqlmodel import Session
             session = Session(engine)
             should_close_session = True
@@ -329,7 +329,7 @@ def list_workflows(
         session = getattr(ctx.deps, 'session', None) if hasattr(ctx, 'deps') else None
         should_close_session = False
         if not session:
-            from ai.database.models import engine
+            from db.models import engine
             from sqlmodel import Session
             session = Session(engine)
             should_close_session = True
@@ -445,7 +445,7 @@ def add_workflow_schedule(
         session = getattr(ctx.deps, 'session', None) if hasattr(ctx, 'deps') else None
         should_close_session = False
         if not session:
-            from ai.database.models import engine
+            from db.models import engine
             from sqlmodel import Session
             session = Session(engine)
             should_close_session = True
@@ -922,7 +922,7 @@ def run_workflow(
         session = getattr(ctx.deps, 'session', None) if hasattr(ctx, 'deps') else None
         should_close_session = False
         if not session:
-            from ai.database.models import engine
+            from db.models import engine
             from sqlmodel import Session
             session = Session(engine)
             should_close_session = True
@@ -975,7 +975,7 @@ def run_workflow(
                 }
         
         # Create workflow run record
-        from ai.database.models import WorkflowRun
+        from db.models import WorkflowRun
         from datetime import datetime, timezone
         
         run_start = datetime.now(timezone.utc)

@@ -18,43 +18,49 @@ http_client = cached_async_http_client(timeout=300, connect=5)
 
 # Define available models
 models = {
-    "gemini": GeminiModel(
+    "gemini-2.5-flash": GeminiModel(
         "gemini-2.5-flash",
         provider=GoogleGLAProvider(
             api_key=os.getenv("GEMINI_API_KEY"), http_client=http_client
         ),
     ),
-    "flash-lite": GeminiModel(
+    "gemini-2.0-flash": GeminiModel(
+        "gemini-2.0-flash",
+        provider=GoogleGLAProvider(
+            api_key=os.getenv("GEMINI_API_KEY"), http_client=http_client
+        ),
+    ),
+    "gemini-2.5-flash-lite": GeminiModel(
         "gemini-2.5-flash-lite",
         provider=GoogleGLAProvider(
             api_key=os.getenv("GEMINI_API_KEY"), http_client=http_client
         ),
     ),
-    "deepseek": GroqModel(
-        "deepseek-r1-distill-llama-70b",
-        provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
-    ),
-     "llama4-fast": GroqModel(
-        "meta-llama/llama-4-scout-17b-16e-instruct",
-        provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
-    ),
-    "claude": OpenAIModel(
+    # "deepseek-r1-distill-llama-70b": GroqModel(
+    #     "deepseek-r1-distill-llama-70b",
+    #     provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
+    # ),
+    #  "llama4-scout": GroqModel(
+    #     "meta-llama/llama-4-scout-17b-16e-instruct",
+    #     provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
+    # ),
+    "claude-sonnet-4": OpenAIModel(
         "anthropic/claude-sonnet-4",
         provider=OpenAIProvider(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY"),
         ),
     ),
-     "llama4": OpenAIModel(
+     "llama4-maverick": OpenAIModel(
         "meta-llama/llama-4-maverick",
         provider=OpenAIProvider(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY"),
         ),
     ),
-    "gpt-4o-mini": OpenAIModel(
-        "gpt-4o-mini", provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"))
-    ),
+    # "gpt-4o-mini": OpenAIModel(
+    #     "gpt-4o-mini", provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"))
+    # ),
     "kimi": OpenAIModel(
         "moonshotai/kimi-k2",
         provider=OpenAIProvider(
@@ -62,13 +68,13 @@ models = {
             api_key=os.getenv("OPENROUTER_API_KEY"),
         ),
     ),
-    "4.1": OpenAIModel(
-        "openai/gpt-4.1",
-        provider=OpenAIProvider(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=os.getenv("OPENROUTER_API_KEY"),
-        ),
-    ),
+    # "4.1": OpenAIModel(
+    #     "openai/gpt-4.1",
+    #     provider=OpenAIProvider(
+    #         base_url="https://openrouter.ai/api/v1",
+    #         api_key=os.getenv("OPENROUTER_API_KEY"),
+    #     ),
+    # ),
     "qwen3": OpenAIModel(
         "qwen/qwen3-235b-a22b-07-25",
         provider=OpenAIProvider(
@@ -76,11 +82,11 @@ models = {
             api_key=os.getenv("OPENROUTER_API_KEY"),
         ),
     ),
-    "gpt-oss-120b-groq": GroqModel(
-        "openai/gpt-oss-120b",
-         provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
-    ),
-    "gpt-oss-120b-openrouter": OpenAIModel(
+    # "gpt-oss-120b-groq": GroqModel(
+    #     "openai/gpt-oss-120b",
+    #      provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
+    # ),
+    "gpt-oss-120b": OpenAIModel(
         "openai/gpt-oss-120b",
         provider=OpenAIProvider(
             base_url="https://openrouter.ai/api/v1",
@@ -94,17 +100,17 @@ models = {
             api_key=os.getenv("OPENROUTER_API_KEY"),
         ),
     ),
-    "gpt-5": OpenAIModel(
-        "openai/gpt-5",
-        provider=OpenAIProvider(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=os.getenv("OPENROUTER_API_KEY"),
-        ),
-    ),
+    # "gpt-5": OpenAIModel(
+    #     "openai/gpt-5",
+    #     provider=OpenAIProvider(
+    #         base_url="https://openrouter.ai/api/v1",
+    #         api_key=os.getenv("OPENROUTER_API_KEY"),
+    #     ),
+    # ),
 }
 
 # Set default model
-DEFAULT_MODEL = "gpt-oss-120b-groq"
+DEFAULT_MODEL = "gpt-oss-120b"
 
 def get_model(model_key: str = None):
     """Get a model by key, fallback to default if not found."""

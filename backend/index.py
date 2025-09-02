@@ -22,7 +22,7 @@ import os
 import asyncio
 
 from helpers.Firebase_helpers import FirebaseUser, get_current_user, role_based_access
-from ai.database.models import (
+from db.models import (
     create_db_and_tables,
 )
 from ai.workflows.workflow_scheduler import run_scheduler_background
@@ -30,6 +30,20 @@ from dotenv import load_dotenv
 
 
 load_dotenv()
+
+# Configure streaming logger when STREAM_DEBUG=1
+import logging
+import os as _os
+if _os.getenv("STREAM_DEBUG", "0") == "1":
+    _stream_logger = logging.getLogger("chat.stream")
+    _stream_logger.setLevel(logging.INFO)
+    if not _stream_logger.handlers:
+        _handler = logging.StreamHandler()
+        _handler.setLevel(logging.INFO)
+        _formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        _handler.setFormatter(_formatter)
+        _stream_logger.addHandler(_handler)
+    _stream_logger.propagate = False
 
 
 THIS_DIR = Path(__file__).parent

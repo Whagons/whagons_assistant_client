@@ -38,7 +38,7 @@ class Message(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     reasoning: str = Field(default="")
     content: str = Field(default="")
-    is_user_message: bool = Field(default=True)
+    message_type: MessageType = Field(default=MessageType.USER)
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
     conversation_id: str = Field(foreign_key="conversation.id")
@@ -93,7 +93,7 @@ type Message struct {
 | `Conversation.id`       | `Conversation.ConversationID` | primary key string                |
 | `Message.id`            | `Message.ID`           | auto-increment                       |
 | `Message.content`       | `Message.Text`         | renamed for clarity                  |
-| `Message.is_user_message` | `Message.Role`        | enum string: "user" or "model"    |
+| `Message.message_type` | `Message.Role`        | enum string: "user", "assistant", "tool_call", "tool_response"    |
 | `created_at`, `updated_at` | GORM timestamps    | `gorm.Model` provides these         |
 | Relationship lists      | slices + GORM tags     | foreign keys defined in struct tags  |
 | JSON args/response      | `FunctionArgs`, `FunctionResponse` | store marshaled JSON strings  |

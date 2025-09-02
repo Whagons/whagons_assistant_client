@@ -1,5 +1,5 @@
 from sqlalchemy import text, inspect
-from ai.database.models import engine, User, create_db_and_tables
+from db.models import engine, User, create_db_and_tables
 
 def add_new_columns():
     # First ensure all tables exist

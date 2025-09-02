@@ -10,6 +10,9 @@ from typing import List
 from pydantic import BaseModel
 from firebase_admin import auth
 from helpers.Firebase_helpers import FirebaseUser, get_current_user
+from db.models import get_session, User
+from requests import Session as DBSession
+from fastapi import Depends, Request
 
 user_router = APIRouter(prefix="/users")
 
@@ -222,5 +225,25 @@ async def search_users(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Preferred model endpoints
+@user_router.get("/users/preferred-model", response_model=dict, tags=["user"])
+async def get_preferred_model(request: Request, session: DBSession = Depends(get_session)):
+    current_user = request.state.user
+    user = session.get(User, current_user.uid)
+    return {"status": "success", "preferred_model": getattr(user, 'preferred_model', None)}
+
+
+@user_router.patch("/users/preferred-model", response_model=dict, tags=["user"])
+async def update_preferred_model(model: str, request: Request, session: DBSession = Depends(get_session)):
+    current_user = request.state.user
+    user = session.get(User, current_user.uid)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.preferred_model = model
+    session.add(user)
+    session.commit()
+    return {"status": "success", "preferred_model": user.preferred_model}
 
 

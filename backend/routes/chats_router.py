@@ -10,10 +10,11 @@ from ai.core.prompts import get_system_prompt
 from ai.assistant_functions.memory_functions import get_memory_no_context
 from pydantic_ai.messages import ImageUrl  # noqa: F401
 from helpers.helper_funcs import geminiParts
-from ai.database.models import get_session, User, Conversation
+from db.models import get_session, User, Conversation
 from fastapi.responses import JSONResponse
 from services.chat_events import get_message_history
 from services.chat_session import get_or_create_session, chat_sessions
+
 
 
 from models.chat_models import (
@@ -66,97 +67,105 @@ async def chat(
     Endpoint to initiate a chat session and stream the response.
     Accepts a list of content that can be text, image URLs, or audio URLs.
     """
-    # Get or create conversation
-    conversation = session.get(Conversation, conversation_id)
-    if not conversation:
-        # Check if user exists in the database, create if not
-        user = session.get(User, current_user.uid)
-        if not user:
-            user = User(
-                id=current_user.uid,
-                email=current_user.email,
-                name=current_user.email.split("@")[0] if current_user.email else None,
+    try:
+
+
+        # Get or create conversation
+        conversation = session.get(Conversation, conversation_id)
+        if not conversation:
+            # Check if user exists in the database, create if not
+            user = session.get(User, current_user.uid)
+            if not user:
+                user = User(
+                    id=current_user.uid,
+                    email=current_user.email,
+                    name=current_user.email.split("@")[0] if current_user.email else None,
+                )
+                session.add(user)
+                session.commit()
+
+            # Generate title using the mixed content
+            title = await geminiParts(chat_request.to_user_content())
+            # Inherit model from user at creation
+            conversation = Conversation(
+                id=conversation_id,
+                title=title,
+                user_id=current_user.uid,
+                model=user.preferred_model,
             )
-            session.add(user)
+            session.add(conversation)
             session.commit()
 
-        # Generate title using the mixed content
-        title = await geminiParts(chat_request.to_user_content())
-        conversation = Conversation(
-            id=conversation_id,
-            title=title,
-            user_id=current_user.uid,
+        # Get message history from the conversation
+        message_history = get_message_history(conversation)
+
+        # Check if message count is a multiple of 10 (excluding the new message we're about to add)
+        message_count = len(conversation.messages)
+        if message_count > 0 and message_count % 10 == 0:
+            # Generate a new title based on recent conversation
+            new_title = await geminiParts(chat_request.to_user_content())
+            conversation.title = new_title
+            session.commit()
+
+        ##refresh system prompt
+        # Get first text content for memory context
+        text_content = next(
+            (
+                item.content
+                for item in chat_request.content
+                if isinstance(item.content, str)
+            ),
+            "",
         )
-        session.add(conversation)
-        session.commit()
 
-    # Get message history from the conversation
-    message_history = get_message_history(conversation)
-    
-    # Check if message count is a multiple of 10 (excluding the new message we're about to add)
-    message_count = len(conversation.messages)
-    if message_count > 0 and message_count % 10 == 0:
-        # Generate a new title based on recent conversation
-        new_title = await geminiParts(chat_request.to_user_content())
-        conversation.title = new_title
-        session.commit()
+        ##only get memory if text content is not empty
+        memory = get_memory_no_context(request.state.user.uid, text_content) if text_content != "" else None
 
+        if len(message_history) > 0:
+            system_prompt = message_history[0].parts[0].content
+            if system_prompt:
+                message_history[0].parts[0].content = get_system_prompt(
+                    request.state.user, memory
+                )
 
-    ##refresh system prompt
-    # Get first text content for memory context
-    text_content = next(
-        (
-            item.content
+        # In the chat endpoint, before creating the agent:
+        has_pdfs = any(
+            isinstance(item.content, DocumentUrlContent)
             for item in chat_request.content
-            if isinstance(item.content, str)
-        ),
-        "",
-    )
+            if hasattr(item, 'content') and hasattr(item.content, 'kind')
+        )
 
-    ##only get memory if text content is not empty
-    memory = get_memory_no_context(request.state.user.uid, text_content) if text_content != "" else None
+        # Start or resume background chat session
+        user_content = chat_request.to_user_content()
+        if STREAM_DEBUG():
+            try:
+                # Brief content summary without heavy data
+                kinds = []
+                for item in chat_request.content:
+                    c = getattr(item, "content", None)
+                    if isinstance(c, str):
+                        kinds.append("text")
+                    elif hasattr(c, "kind"):
+                        kinds.append(str(getattr(c, "kind", "unknown")))
+                    else:
+                        kinds.append(type(c).__name__)
+                stream_logger.info(
+                    "chat:start user=%s conv=%s kinds=%s",
+                    getattr(current_user, "uid", None),
+                    conversation_id,
+                    ",".join(kinds),
+                )
+            except Exception:
+                pass
+        chat_session = get_or_create_session(conversation_id)
+        await chat_session.start(current_user, user_content, has_pdfs=has_pdfs, memory=memory)
 
-    if len(message_history) > 0:
-        system_prompt = message_history[0].parts[0].content
-        if system_prompt:
-            message_history[0].parts[0].content = get_system_prompt(
-                request.state.user, memory
-            )
+        # Do not hold the HTTP request open; background session streams via WebSocket
 
-    # In the chat endpoint, before creating the agent:
-    has_pdfs = any(
-        isinstance(item.content, DocumentUrlContent) 
-        for item in chat_request.content 
-        if hasattr(item, 'content') and hasattr(item.content, 'kind')
-    )
+        return JSONResponse({"status": "started", "conversation_id": conversation_id}, status_code=202)
 
-    # Start or resume background chat session
-    user_content = chat_request.to_user_content()
-    if STREAM_DEBUG():
-        try:
-            # Brief content summary without heavy data
-            kinds = []
-            for item in chat_request.content:
-                c = getattr(item, "content", None)
-                if isinstance(c, str):
-                    kinds.append("text")
-                elif hasattr(c, "kind"):
-                    kinds.append(str(getattr(c, "kind", "unknown")))
-                else:
-                    kinds.append(type(c).__name__)
-            stream_logger.info(
-                "chat:start user=%s conv=%s kinds=%s",
-                getattr(current_user, "uid", None),
-                conversation_id,
-                ",".join(kinds),
-            )
-        except Exception:
-            pass
-    chat_session = get_or_create_session(conversation_id)
-    await chat_session.start(current_user, user_content, has_pdfs=has_pdfs, memory=memory)
-
-    # Do not hold the HTTP request open; background session streams via WebSocket
-    return JSONResponse({"status": "started", "conversation_id": conversation_id}, status_code=202)
+    except Exception:
+        raise
 
 
 @chats_router.post("/chat/stop")
@@ -165,12 +174,24 @@ async def stop_chat(
     conversation_id: str,
 ):
     """Stop a running chat session for the given conversation."""
-    _ = request.state.user  # Reserved for future authorization checks per conversation
-    chat_session = get_or_create_session(conversation_id)
-    if not chat_session.is_running():
-        return JSONResponse({"status": "not_running", "conversation_id": conversation_id})
-    await chat_session.stop()
-    return JSONResponse({"status": "stopped", "conversation_id": conversation_id})
+    try:
+        current_user = request.state.user  # Reserved for future authorization checks per conversation
+        _ = getattr(current_user, 'uid', None)
+
+        
+
+        chat_session = get_or_create_session(conversation_id)
+        if not chat_session.is_running():
+            return JSONResponse({"status": "not_running", "conversation_id": conversation_id})
+
+        await chat_session.stop()
+
+        
+
+        return JSONResponse({"status": "stopped", "conversation_id": conversation_id})
+
+    except Exception:
+        raise
 
 async def get_user_confirmation(node, deps: MyDeps) -> bool:
     # Placeholder: actual confirmation should be driven by WebSocket messages
@@ -179,8 +200,13 @@ async def get_user_confirmation(node, deps: MyDeps) -> bool:
 
 
 
+
 @ws_chats_router.websocket("/ws")
 async def chat_ws(websocket: WebSocket, conversation_id: str):
+    """
+    WebSocket endpoint for single conversation chat streaming.
+    Handles the main chat WebSocket connection for a specific conversation.
+    """
     # Manual auth for WebSocket: read token from headers or query param
     token_header = websocket.headers.get('authorization')
     token_param = websocket.query_params.get('token')
@@ -190,53 +216,143 @@ async def chat_ws(websocket: WebSocket, conversation_id: str):
     elif token_param:
         _token = token_param
 
-    # Optionally verify token here or allow anonymous if upstream proxies handle auth
-    # We accept and proceed even if token is missing to avoid handshake failures in dev
-    await websocket.accept()
-    if STREAM_DEBUG():
-        stream_logger.info("ws:open conv=%s", conversation_id)
+    try:
+        # Accept the WebSocket connection (reduced logging to prevent spam)
+        await websocket.accept()
 
-    chat_session = get_or_create_session(conversation_id)
+        if STREAM_DEBUG():
+            stream_logger.info("ws:open conv=%s", conversation_id)
 
-    async def forward_events():
-        try:
-            while True:
-                chunk = await chat_session.queue.get()
-                if chunk.startswith("data: "):
-                    payload = chunk[len("data: ") :].strip()
-                    if STREAM_DEBUG():
-                        try:
-                            d = json.loads(payload)
-                            et = d.get("type")
-                            kind = None
-                            data = d.get("data") or {}
-                            if isinstance(data, dict):
-                                if "part" in data and isinstance(data["part"], dict):
-                                    kind = data["part"].get("part_kind")
-                                elif "delta" in data and isinstance(data["delta"], dict):
-                                    kind = data["delta"].get("part_kind")
-                            stream_logger.info("ws:send conv=%s type=%s kind=%s", conversation_id, et, kind)
-                        except Exception:
-                            pass
-                    await websocket.send_text(payload)
-                else:
-                    await websocket.send_text(chunk)
-        except asyncio.CancelledError:
+        chat_session = get_or_create_session(conversation_id)
+
+        # Define nested function for forwarding events
+        async def forward_events():
+            """Forward events from session queue to WebSocket with error handling."""
+            messages_sent = 0
+            try:
+                while True:
+                    try:
+                        chunk = await chat_session.queue.get()
+                        messages_sent += 1
+
+                        if chunk.startswith("data: "):
+                            payload = chunk[len("data: ") :].strip()
+                            if STREAM_DEBUG():
+                                try:
+                                    d = json.loads(payload)
+                                    et = d.get("type")
+                                    kind = None
+                                    data = d.get("data") or {}
+                                    if isinstance(data, dict):
+                                        if "part" in data and isinstance(data["part"], dict):
+                                            kind = data["part"].get("part_kind")
+                                        elif "delta" in data and isinstance(data["delta"], dict):
+                                            kind = data["delta"].get("part_kind")
+                                    stream_logger.info("ws:send conv=%s type=%s kind=%s", conversation_id, et, kind)
+                                except Exception as e:
+                                    stream_logger.warning("ws:send_parse_error conv=%s error=%s", conversation_id, str(e))
+                            await websocket.send_text(payload)
+                            # Proactively close the websocket after terminal events
+                            try:
+                                term_type = None
+                                try:
+                                    d = json.loads(payload)
+                                    term_type = d.get("type")
+                                except Exception:
+                                    term_type = None
+                                if term_type in {"done", "stopped", "error"}:
+                                    if STREAM_DEBUG():
+                                        stream_logger.info("ws:close_after_terminal conv=%s type=%s", conversation_id, term_type)
+                                    await websocket.close()
+                                    break
+                            except Exception:
+                                pass
+                        else:
+                            await websocket.send_text(chunk)
+
+                    except Exception as e:
+                        # Stop forwarding on send errors to avoid infinite loops after disconnect
+                        if STREAM_DEBUG():
+                            stream_logger.warning("ws:send_error conv=%s: %s", conversation_id, str(e))
+                        break
+
+            except asyncio.CancelledError:
+                if STREAM_DEBUG():
+                    stream_logger.info("ws:forward_cancelled conv=%s", conversation_id)
+                return
+            except Exception as e:
+                if STREAM_DEBUG():
+                    stream_logger.error("ws:forward_critical_error conv=%s: %s", conversation_id, str(e))
+                raise
+
             return
 
-    producer = asyncio.create_task(forward_events())
-    try:
-        while True:
-            _ = await websocket.receive_text()
-            await websocket.send_text(json.dumps({"type": "ack"}))
-    except WebSocketDisconnect:
-        producer.cancel()
+        producer = asyncio.create_task(forward_events())
+
+        try:
+            messages_received = 0
+            while True:
+                try:
+                    raw = await websocket.receive_text()  # Receive message
+                    messages_received += 1
+
+                    # Log received message for debugging
+                    if STREAM_DEBUG():
+                        stream_logger.info("ws:recv conv=%s msg_num=%s", conversation_id, messages_received)
+
+                    # Always ack
+                    await websocket.send_text(json.dumps({"type": "ack"}))
+
+                    # Best-effort parse client message and reply with terminal state if session is over
+                    try:
+                        data = json.loads(raw)
+                        if isinstance(data, dict) and data.get("type") == "ping":
+                            # If session is no longer running/started, tell client to stop
+                            if not chat_session.is_running() or not getattr(chat_session, 'started', False):
+                                await websocket.send_text(json.dumps({
+                                    "type": "stopped",
+                                    "conversation_id": conversation_id
+                                }))
+                                # Close the websocket to prevent further pings
+                                try:
+                                    await websocket.close()
+                                except Exception:
+                                    pass
+                                break
+                    except Exception:
+                        # ignore malformed client messages
+                        pass
+
+                except WebSocketDisconnect:
+                    # Propagate to outer handler where we cancel producer
+                    raise
+                except Exception as e:
+                    # Stop loop on generic receive errors to avoid tight error spin
+                    if STREAM_DEBUG():
+                        stream_logger.warning("ws:receive_error conv=%s: %s", conversation_id, str(e))
+                    break
+
+            # Ensure forwarder stops when receive loop ends
+            producer.cancel()
+
+        except WebSocketDisconnect:
+            # Reduced logging for normal disconnects
+            if STREAM_DEBUG():
+                stream_logger.info("ws:close conv=%s", conversation_id)
+            producer.cancel()
+
+        except Exception as e:
+            # Only log critical connection errors
+            if STREAM_DEBUG():
+                stream_logger.error("ws:connection_error conv=%s: %s", conversation_id, str(e))
+            producer.cancel()
+            raise
+
+    except Exception as e:
+        # Only log setup errors in debug mode to prevent spam
         if STREAM_DEBUG():
-            stream_logger.info("ws:close conv=%s", conversation_id)
-    except Exception:
-        producer.cancel()
-        if STREAM_DEBUG():
-            stream_logger.exception("ws:error conv=%s", conversation_id)
+            stream_logger.error("ws:setup_error conv=%s: %s", conversation_id, str(e))
+        raise
 
 
 @ws_chats_router.websocket("/ws-all")

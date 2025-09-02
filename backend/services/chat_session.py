@@ -21,7 +21,7 @@ from pydantic_graph import End
 
 from ai.core.agent_factory import MyDeps, create_agent
 from ai.core.prompts import get_system_prompt
-from ai.database.models import Conversation, Message as DBMessage, engine
+from db.models import Conversation, Message as DBMessage, MessageType, engine
 from sqlmodel import Session as DBSession
 
 from services.chat_events import event_to_json_string, model_message_to_dict, get_message_history
@@ -42,6 +42,8 @@ class ChatSession:
         self._table_detected = False
         self._chunk_size = 500  # Characters per chunk
         self._table_chunk_size = 1000  # Larger chunks for tables
+        # Track last emit time for debugging idle periods
+        self._last_emit_ts: float | None = None
 
     def is_running(self) -> bool:
         return self.task is not None and not self.task.done()
@@ -155,12 +157,35 @@ class ChatSession:
                     await self._emit(json.dumps({"type": "stopped"}))
                 except Exception:
                     pass
+            except Exception as e:
+                # Unexpected error while stopping
+                if self._stream_debug:
+                    self._logger.exception("conv=%s stop_error=%s", self.conversation_id, e)
         self.task = None
         self.started = False
 
     async def start(self, current_user, user_content: List[Union[str, ImageUrl, AudioUrl, DocumentUrl, BinaryContent]], has_pdfs: bool, memory: str | None) -> None:
         if self.is_running():
+            if self._stream_debug:
+                self._logger.info("conv=%s already_running user=%s", self.conversation_id, getattr(current_user, 'uid', None))
             return
+        if self._stream_debug:
+            try:
+                kinds = []
+                for item in user_content:
+                    if isinstance(item, str):
+                        kinds.append("text")
+                    else:
+                        kinds.append(type(item).__name__)
+                self._logger.info(
+                    "conv=%s start user=%s kinds=%s has_pdfs=%s",
+                    self.conversation_id,
+                    getattr(current_user, 'uid', None),
+                    ",".join(kinds),
+                    has_pdfs,
+                )
+            except Exception:
+                pass
         self.deps_instance = MyDeps(user_object=current_user, user_rejection_flags={}, conversation_id=self.conversation_id)
         self.task = asyncio.create_task(self._run(current_user, user_content, has_pdfs, memory))
         self.started = True
@@ -170,6 +195,8 @@ class ChatSession:
             with DBSession(engine) as session:
                 conversation = session.get(Conversation, self.conversation_id)
                 if not conversation:
+                    if self._stream_debug:
+                        self._logger.error("conv=%s db_missing_conversation", self.conversation_id)
                     return
                 message_history = get_message_history(conversation)
 
@@ -178,82 +205,99 @@ class ChatSession:
                     if system_prompt:
                         message_history[0].parts[0].content = get_system_prompt(current_user, memory)
 
-                agent = await create_agent(current_user, memory, has_pdfs=has_pdfs)
+                if self._stream_debug:
+                    self._logger.info("conv=%s agent_create start", self.conversation_id)
+                # Use conversation.model if set, otherwise agent_factory will use user/default
+                model_key = conversation.model if getattr(conversation, 'model', None) else None
+                agent = await create_agent(current_user, memory, has_pdfs=has_pdfs, model_key=model_key)
+                if self._stream_debug:
+                    self._logger.info("conv=%s agent_create done", self.conversation_id)
 
                 async with agent.iter(
                     deps=self.deps_instance,
                     user_prompt=user_content,
                     message_history=message_history,
                 ) as run:
-                    async for node in run:
-                        if self._stream_debug:
-                            try:
-                                node_name = type(node).__name__
-                                node_info = getattr(node, "name", None) or getattr(node, "tool_name", None)
-                                self._logger.info("conv=%s node=%s info=%s", self.conversation_id, node_name, node_info)
-                            except Exception:
-                                self._logger.info("conv=%s node=%s", self.conversation_id, type(node).__name__)
-                        if isinstance(node, End):
-                            # Flush any remaining buffered content
-                            if self._content_buffer:
-                                await self._emit(json.dumps({"type": "content_chunk", "data": self._content_buffer}))
-                                self._content_buffer = ""
-                            break
-                        if isinstance(node, ModelRequestNode):
-                            db_message_request = DBMessage(
-                                content=json.dumps(model_message_to_dict(node.request)),
-                                is_user_message=True,
-                                conversation_id=self.conversation_id,
-                            )
-                            session.add(db_message_request)
-                            conversation_obj = session.get(Conversation, self.conversation_id)
-                            if conversation_obj:
-                                conversation_obj.updated_at = datetime.now()
-                            session.commit()
+                        async for node in run:
+                            if self._stream_debug:
+                                try:
+                                    node_name = type(node).__name__
+                                    node_info = getattr(node, "name", None) or getattr(node, "tool_name", None)
+                                    self._logger.info("conv=%s node=%s info=%s", self.conversation_id, node_name, node_info)
+                                except Exception:
+                                    self._logger.info("conv=%s node=%s", self.conversation_id, type(node).__name__)
+                            if isinstance(node, End):
+                                # Flush any remaining buffered content
+                                if self._content_buffer:
+                                    await self._emit(json.dumps({"type": "content_chunk", "data": self._content_buffer}))
+                                    self._content_buffer = ""
+                                break
+                            if isinstance(node, ModelRequestNode):
+                                if self._stream_debug:
+                                    self._logger.info("conv=%s event=model_request", self.conversation_id)
+                                db_message_request = DBMessage(
+                                    content=json.dumps(model_message_to_dict(node.request)),
+                                    message_type=MessageType.USER,
+                                    conversation_id=self.conversation_id,
+                                )
+                                session.add(db_message_request)
+                                conversation_obj = session.get(Conversation, self.conversation_id)
+                                if conversation_obj:
+                                    conversation_obj.updated_at = datetime.now()
+                                session.commit()
 
-                            async with node.stream(run.ctx) as request_stream:
-                                content_accumulator = ""
+                                async with node.stream(run.ctx) as request_stream:
+                                    content_accumulator = ""
 
-                                async for event in request_stream:
-                                    if self._stream_debug:
-                                        print(event)
-                                    if isinstance(event, PartStartEvent):
+                                    async for event in request_stream:
                                         if self._stream_debug:
-                                            kind = getattr(event.part, 'part_kind', type(event.part).__name__)
-                                            self._logger.info("conv=%s event=part_start kind=%s", self.conversation_id, kind)
-                                        await self._emit(event_to_json_string(event))
-                                    elif isinstance(event, PartDeltaEvent):
-                                        if self._stream_debug:
-                                            kind = getattr(event.delta, 'part_delta_kind', type(event.delta).__name__)
-                                            self._logger.info("conv=%s event=part_delta kind=%s", self.conversation_id, kind)
-
-                                        # Handle text content specifically for chunking
-                                        if (hasattr(event.delta, 'content_delta') and event.delta.content_delta) or \
-                                           (hasattr(event.delta, 'part_delta_kind') and event.delta.part_delta_kind == 'text'):
-                                            content_delta = getattr(event.delta, 'content_delta', None) or \
-                                                          getattr(event.delta, 'content', '')
-                                            if content_delta:
-                                                content_accumulator += content_delta
-
-                                                # Check if we should flush accumulated content
-                                                if self._should_flush_buffer(content_accumulator):
-                                                    chunk = self._get_optimal_chunk(content_accumulator)
-                                                    if chunk:
-                                                        # Send chunked content instead of individual deltas
-                                                        chunk_event = {
-                                                            "type": "content_chunk",
-                                                            "data": chunk,
-                                                            "conversation_id": self.conversation_id
-                                                        }
-                                                        await self._emit(json.dumps(chunk_event))
-                                                        content_accumulator = self._content_buffer
-                                                        self._content_buffer = ""
-                                                else:
-                                                    # Continue accumulating
-                                                    pass
-                                        else:
-                                            # Non-text events (tool calls, etc.) send immediately
+                                            try:
+                                                self._logger.debug("conv=%s request_event=%s", self.conversation_id, type(event).__name__)
+                                            except Exception:
+                                                pass
+                                        if isinstance(event, PartStartEvent):
+                                            if self._stream_debug:
+                                                kind = getattr(event.part, 'part_kind', type(event.part).__name__)
+                                                self._logger.info("conv=%s event=part_start kind=%s", self.conversation_id, kind)
                                             await self._emit(event_to_json_string(event))
+                                        elif isinstance(event, PartDeltaEvent):
+                                            if self._stream_debug:
+                                                kind = getattr(event.delta, 'part_delta_kind', type(event.delta).__name__)
+                                                self._logger.info("conv=%s event=part_delta kind=%s", self.conversation_id, kind)
+
+                                            # Handle text content specifically for chunking
+                                            if (hasattr(event.delta, 'content_delta') and event.delta.content_delta) or \
+                                               (hasattr(event.delta, 'part_delta_kind') and event.delta.part_delta_kind == 'text'):
+                                                content_delta = getattr(event.delta, 'content_delta', None) or \
+                                                              getattr(event.delta, 'content', '')
+                                                if content_delta:
+                                                    content_accumulator += content_delta
+
+                                                    # Check if we should flush accumulated content
+                                                    should_flush = self._should_flush_buffer(content_accumulator)
+                                                    if self._stream_debug and should_flush:
+                                                        try:
+                                                            self._logger.debug("conv=%s flush_buffer size=%s", self.conversation_id, len(self._content_buffer + content_accumulator))
+                                                        except Exception:
+                                                            pass
+                                                    if should_flush:
+                                                        chunk = self._get_optimal_chunk(content_accumulator)
+                                                        if chunk:
+                                                            # Send chunked content instead of individual deltas
+                                                            chunk_event = {
+                                                                "type": "content_chunk",
+                                                                "data": chunk,
+                                                                "conversation_id": self.conversation_id
+                                                            }
+                                                            await self._emit(json.dumps(chunk_event))
+                                                            content_accumulator = self._content_buffer
+                                                            self._content_buffer = ""
+                                                    else:
+                                                        # Continue accumulating
+                                                        pass
+                                            else:
+                                                # Non-text events (tool calls, etc.) send immediately
+                                                await self._emit(event_to_json_string(event))
 
                                 # Flush any remaining accumulated content
                                 if content_accumulator:
@@ -274,57 +318,83 @@ class ChatSession:
                                         }
                                         await self._emit(json.dumps(chunk_event))
                                         self._content_buffer = ""
-                        elif isinstance(node, CallToolsNode):
-                            async with node.stream(run.ctx) as handle_stream:
-                                async for event in handle_stream:
-                                    if self._stream_debug:
-                                        try:
-                                            d = json.loads(event_to_json_string(event))
-                                            et = d.get("type")
-                                        except Exception:
-                                            et = "tool_event"
-                                        self._logger.info("conv=%s event=%s", self.conversation_id, et)
-                                    await self._emit(event_to_json_string(event))
+                            elif isinstance(node, CallToolsNode):
+                                if self._stream_debug:
+                                    self._logger.info("conv=%s event=call_tools_start", self.conversation_id)
+                                async with node.stream(run.ctx) as handle_stream:
+                                    async for event in handle_stream:
+                                        if self._stream_debug:
+                                            try:
+                                                d = json.loads(event_to_json_string(event))
+                                                et = d.get("type")
+                                            except Exception:
+                                                et = "tool_event"
+                                            self._logger.info("conv=%s event=%s", self.conversation_id, et)
+                                        await self._emit(event_to_json_string(event))
 
-                            db_message = DBMessage(
-                                content=json.dumps(model_message_to_dict(node.model_response)),
-                                is_user_message=False,
-                                conversation_id=self.conversation_id,
-                            )
-                            session.add(db_message)
-                            conversation_obj = session.get(Conversation, self.conversation_id)
-                            if conversation_obj:
-                                conversation_obj.updated_at = datetime.now()
-                            session.commit()
-                            if self._stream_debug:
-                                try:
-                                    for part in node.model_response.parts:
-                                        if isinstance(part, ReasoningPart) and getattr(part, "reasoning", ""):
-                                            snippet = part.reasoning[:80].replace("\n", "\\n")
-                                            self._logger.info(
-                                                "conv=%s event=reasoning_final len=%s snippet=%s",
-                                                self.conversation_id,
-                                                len(part.reasoning),
-                                                snippet,
-                                            )
-                                except Exception:
-                                    pass
+                                db_message = DBMessage(
+                                    content=json.dumps(model_message_to_dict(node.model_response)),
+                                    message_type=MessageType.ASSISTANT,
+                                    conversation_id=self.conversation_id,
+                                )
+                                session.add(db_message)
+                                conversation_obj = session.get(Conversation, self.conversation_id)
+                                if conversation_obj:
+                                    conversation_obj.updated_at = datetime.now()
+                                session.commit()
+                                if self._stream_debug:
+                                    try:
+                                        for part in node.model_response.parts:
+                                            if isinstance(part, ReasoningPart) and getattr(part, "reasoning", ""):
+                                                snippet = part.reasoning[:80].replace("\n", "\\n")
+                                                self._logger.info(
+                                                    "conv=%s event=reasoning_final len=%s snippet=%s",
+                                                    self.conversation_id,
+                                                    len(part.reasoning),
+                                                    snippet,
+                                                )
+                                    except Exception:
+                                        pass
+
             await self._emit(json.dumps({"type": "done"}))
             if self._stream_debug:
                 self._logger.info("conv=%s event=done", self.conversation_id)
+            # Mark session no longer started so callers can create a new one if needed
+            self.started = False
+
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            await self._emit(json.dumps({"type": "error", "data": str(e)}))
+            try:
+                await self._emit(json.dumps({"type": "error", "data": str(e)}))
+            except Exception:
+                pass
             if self._stream_debug:
+                # Include additional context if available
                 self._logger.exception("conv=%s event=error %s", self.conversation_id, e)
+            # Ensure the client knows the stream is finished even on error
+            try:
+                await self._emit(json.dumps({"type": "done"}))
+            except Exception:
+                pass
+            # Mark session no longer started so callers can create a new one if needed
+            self.started = False
 
     async def _emit(self, data: str) -> None:
         try:
             self.queue.put_nowait("data: " + data + "\n\n")
+            if self._stream_debug:
+                try:
+                    d = json.loads(data)
+                    et = d.get("type")
+                    self._logger.debug("conv=%s emit type=%s", self.conversation_id, et)
+                except Exception:
+                    pass
         except asyncio.QueueFull:
             _ = await self.queue.get()
             self.queue.put_nowait("data: " + data + "\n\n")
+            if self._stream_debug:
+                self._logger.warning("conv=%s emit_queue_full dropped_oldest=1", self.conversation_id)
 
 
 chat_sessions: Dict[str, ChatSession] = {}

@@ -4,3 +4,6 @@ deploy-qdrant:
 
 run:
 	uv run index.py
+
+log:
+	uv run -m uvicorn index:app --reload --log-level info

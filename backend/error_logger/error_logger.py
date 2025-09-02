@@ -28,12 +28,31 @@ class ErrorLogger:
     def __init__(self):
         if hasattr(self, '_initialized') and self._initialized:
             return
-            
+
         with self._lock:
             if hasattr(self, '_initialized') and self._initialized:
                 return
-                
+
             self.logger = logging.getLogger(__name__)
+            # Set to INFO level to reduce verbosity (was DEBUG)
+            if self.logger.level > logging.INFO:
+                self.logger.setLevel(logging.INFO)
+
+            # Add console handler if none exists
+            if not self.logger.handlers:
+                console_handler = logging.StreamHandler()
+                console_handler.setLevel(logging.INFO)
+                formatter = logging.Formatter(
+                    '[%(asctime)s] %(levelname)s - %(name)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S'
+                )
+                console_handler.setFormatter(formatter)
+                self.logger.addHandler(console_handler)
+
+            # Add safeguard against recursive logging
+            self._logging_in_progress = False
+            self._logging_lock = threading.Lock()
+
             self.db_path = os.path.join(os.path.dirname(__file__), 'error_logs.db')
             self._init_db()  # Run once to ensure DB file and table exist
             self._initialized = True
@@ -60,6 +79,7 @@ class ErrorLogger:
                     )
                 ''')
         except Exception as e:
+            # Use print instead of logger during initialization to avoid issues
             self.logger.error(f"Failed to initialize database: {str(e)}")
 
     def log_error(
@@ -71,13 +91,13 @@ class ErrorLogger:
     ) -> Dict[str, Any]:
         """
         Logs an error to the database and prepares for future SMS notification.
-        
+
         Args:
             function_name: Name of the function where the error occurred
             error_text: Description of the error
             parameters: Dictionary of parameters used in the function call
             stack_trace: Optional stack trace of the error
-            
+
         Returns:
             Dict containing error information and a user-friendly message
         """
@@ -98,7 +118,7 @@ class ErrorLogger:
         try:
             with self._create_connection() as conn:
                 conn.execute('''
-                    INSERT INTO error_logs 
+                    INSERT INTO error_logs
                     (timestamp, function_name, error_text, parameters, stack_trace)
                     VALUES (?, ?, ?, ?, ?)
                 ''', (
@@ -125,31 +145,25 @@ class ErrorLogger:
             }
         }
 
-    def send_sms_notification(self, error_log: ErrorLog) -> None:
-        """
-        Placeholder for future SMS notification functionality.
-        """
-        # TODO: Implement SMS notification
-        pass
 
     def get_recent_errors(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
         Retrieve recent error logs from the database.
-        
+
         Args:
             limit: Maximum number of errors to return
-            
+
         Returns:
             List of error logs as dictionaries
         """
         try:
             with self._create_connection() as conn:
                 cursor = conn.execute('''
-                    SELECT * FROM error_logs 
-                    ORDER BY timestamp DESC 
+                    SELECT * FROM error_logs
+                    ORDER BY timestamp DESC
                     LIMIT ?
                 ''', (limit,))
-                
+
                 errors = []
                 for row in cursor.fetchall():
                     error = {
@@ -177,14 +191,14 @@ class ErrorLogger:
     ) -> List[Dict[str, Any]]:
         """
         Search for errors with various filters.
-        
+
         Args:
             search_text: Text to search in error_text and stack_trace
             function_name: Filter by specific function name
             start_date: Filter errors from this date (inclusive)
             end_date: Filter errors until this date (inclusive)
             limit: Maximum number of errors to return
-            
+
         Returns:
             List of error logs as dictionaries
         """
@@ -218,7 +232,7 @@ class ErrorLogger:
                 params.append(limit)
 
                 cursor = conn.execute(query, params)
-                
+
                 errors = []
                 for row in cursor.fetchall():
                     error = {

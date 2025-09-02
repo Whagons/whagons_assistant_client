@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 from croniter import croniter
 import pytz
 
-from ai.database.models import Workflow, WorkflowSchedule, WorkflowRun, engine
+from db.models import Workflow, WorkflowSchedule, WorkflowRun, engine
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

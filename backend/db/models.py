@@ -1,12 +1,24 @@
+import os
 from typing import List, Optional
 from datetime import datetime, timezone
+from enum import Enum
 from sqlmodel import Field, Relationship, Session, SQLModel, create_engine
 from sqlalchemy import String, Column, Text
 
-# Define the database URL
-DATABASE_URL = "sqlite:///./db/chat_history.sqlite"
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
+# Define the database URL from environment variable
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./db/chat_history.sqlite")
 
 # Create models matching your frontend Prisma schema
+
+class MessageType(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL_CALL = "tool_call"
+    TOOL_RESPONSE = "tool_response"
 class User(SQLModel, table=True):
     id: str = Field(primary_key=True)
     email: str = Field(unique=True)
@@ -27,6 +39,7 @@ class Conversation(SQLModel, table=True):
     title: str
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
+    model: Optional[str] = Field(default=None)
     
     # Foreign keys
     user_id: str = Field(foreign_key="user.id")
@@ -42,13 +55,13 @@ class Message(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     reasoning: str = Field(default="")
     content: str = Field(default="")
-    is_user_message: bool = Field(default=True)
+    message_type: MessageType = Field(default=MessageType.USER)
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
-    
+
     # Foreign keys
     conversation_id: str = Field(foreign_key="conversation.id")
-    
+
     # Relationships
     conversation: Conversation = Relationship(back_populates="messages")
 
@@ -136,6 +149,36 @@ engine = create_engine(DATABASE_URL, echo=False)
 def create_db_and_tables():
     # Only create tables if they don't exist
     SQLModel.metadata.create_all(engine)
+    # Lightweight migration: add 'model' column to conversation if missing
+    try:
+        from sqlalchemy import inspect, text
+        with engine.begin() as conn:
+            inspector = inspect(conn)
+            columns = [c['name'] for c in inspector.get_columns('conversation')]
+            if 'model' not in columns:
+                conn.execute(text("ALTER TABLE conversation ADD COLUMN model VARCHAR"))
+            
+            # No longer backfilling here; see below to always run backfill even if column existed.
+    except Exception:
+        # Best-effort migration; ignore if not supported
+        pass
+
+    # Always attempt backfill: set conversation.model to user's preferred_model if null/empty
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text(
+                """
+                UPDATE conversation
+                SET model = (
+                    SELECT preferred_model FROM user WHERE user.id = conversation.user_id
+                )
+                WHERE model IS NULL OR model = ''
+                """
+            ))
+    except Exception:
+        # Ignore if DB is not ready or table missing
+        pass
 
 
 # Database session management

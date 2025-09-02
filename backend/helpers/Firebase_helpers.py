@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from fastapi.security import HTTPBearer
 from typing import List, Callable, Optional
 from fastapi import Depends, Request
-from ai.database.models import Session, User, engine
+from db.models import Session, User, engine
 from sqlalchemy import select
 
 

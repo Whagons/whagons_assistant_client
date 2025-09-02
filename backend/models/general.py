@@ -1,7 +1,15 @@
 from typing import List, Union
+from enum import Enum
 from pydantic import BaseModel
 
 from pydantic_ai.messages import FinalResultEvent, FunctionToolCallEvent, FunctionToolResultEvent, PartDeltaEvent, PartStartEvent
+
+
+class MessageType(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL_CALL = "tool_call"
+    TOOL_RESPONSE = "tool_response"
 
 
 
@@ -34,7 +42,7 @@ class ConversationCreate(BaseModel):
 
 class MessageCreate(BaseModel):
     content: str
-    is_user_message: bool = True
+    message_type: MessageType = MessageType.USER
     conversation_id: str
 
 

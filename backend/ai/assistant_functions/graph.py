@@ -18,7 +18,7 @@ def graph_api_request(
     method: str,
     # LLM provides body and query params as JSON strings
     body_json: Optional[str] = None,
-    query_params_json: Optional[Union[str, Dict[str, Any]]] = None,
+    query_params_json: Optional[str] = None,
     headers_json: Optional[str] = None
 ) -> Union[Dict[str, Any], List[Any]]:
     print(ctx)
@@ -61,9 +61,7 @@ def graph_api_request(
     parsed_query_params: Optional[Dict[str, str]] = None
     parsed_headers: Optional[Dict[str, str]] = None
 
-    # Handle query_params_json - convert dict to JSON string if needed
-    if query_params_json and isinstance(query_params_json, dict):
-        query_params_json = json.dumps(query_params_json)
+    # query_params_json must be a JSON string if provided
 
     # 1. Parse LLM inputs (JSON strings to Python objects)
     try:
