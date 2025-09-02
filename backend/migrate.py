@@ -24,12 +24,13 @@ def add_new_columns():
     
     with engine.connect() as conn:
         # Add columns if they don't exist
+        # Quote table name "user" to avoid conflicts with Postgres reserved keyword
         if 'github_token' not in columns:
-            conn.execute(text("ALTER TABLE user ADD COLUMN github_token TEXT"))
+            conn.execute(text('ALTER TABLE "user" ADD COLUMN github_token TEXT'))
         if 'github_username' not in columns:
-            conn.execute(text("ALTER TABLE user ADD COLUMN github_username TEXT"))
+            conn.execute(text('ALTER TABLE "user" ADD COLUMN github_username TEXT'))
         if 'preferred_model' not in columns:
-            conn.execute(text("ALTER TABLE user ADD COLUMN preferred_model TEXT DEFAULT 'gemini'"))
+            conn.execute(text("ALTER TABLE \"user\" ADD COLUMN preferred_model TEXT DEFAULT 'gemini'"))
         conn.commit()
 
 if __name__ == "__main__":

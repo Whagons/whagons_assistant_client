@@ -171,7 +171,7 @@ def create_db_and_tables():
                 """
                 UPDATE conversation
                 SET model = (
-                    SELECT preferred_model FROM user WHERE user.id = conversation.user_id
+                    SELECT preferred_model FROM "user" WHERE "user".id = conversation.user_id
                 )
                 WHERE model IS NULL OR model = ''
                 """
