@@ -26,10 +26,13 @@ import MessageItem from "../components/ChatMessageItem";
 import { MessageCache } from "../utils/memory_cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import { convertToChatMessages, HOST } from "../utils/utils";
+import { createWSManager } from "../utils/ws";
 import ToolMessageRenderer, { ToolCallMap } from "../components/ToolMessageRenderer";
 import NewChat from "../components/NewChat";
 
 // Component to render user message content
+
+const wsManager = createWSManager(HOST);
 
 function ChatWindow() {
   // Lightweight streaming debug logger. Enable with: localStorage.setItem('debug_stream','1')
@@ -55,12 +58,8 @@ function ChatWindow() {
   const abortControllerRef = { current: false };
   const [showScrollToBottom, setShowScrollToBottom] = createSignal<boolean>(false);
   const [scrollBtnLeft, setScrollBtnLeft] = createSignal<number | undefined>(undefined);
-  // WebSocket management for bidirectional, resumable sessions
-  let ws: WebSocket | null = null;
-  let shouldReconnect = true;
-  let reconnectTimeout: number | undefined;
-  // Heartbeat/ping state
-  let heartbeatTimer: number | undefined;
+  // Single multiplexed WebSocket via wsManager; per-conversation subscription only
+  let unsubscribeWS: (() => void) | null = null;
   let lastActivityAt = 0;
   const { chats, setChats } = useChatContext();
   const navigate = useNavigate();
@@ -203,35 +202,6 @@ function ChatWindow() {
     });
 
 
-    // Subscribe to any running conversations via multiplexed WS so the stop button restores after reload
-    try {
-      const { authFetch } = await import("@/lib/utils");
-      const runningResp = await authFetch(`${HOST}/api/v1/chats/running`);
-      if (runningResp.ok) {
-        const { running } = await runningResp.json();
-        if (Array.isArray(running) && running.length > 0) {
-          const wsUrlBase = HOST.startsWith("https") ? HOST.replace("https", "wss") : HOST.replace("http", "ws");
-          const wsUrl = `${wsUrlBase}/api/v1/chats/ws-all?conversation_ids=${encodeURIComponent(running.join(","))}`;
-          const mux = new WebSocket(wsUrl);
-          mux.onmessage = (evt) => {
-            try {
-              const data = JSON.parse(evt.data);
-              // Only toggle UI state for the active conversation view
-              if (data?.conversation_id === conversationId()) {
-                if (data?.type === "part_start" || data?.type === "part_delta") {
-                  setGettingResponse(true);
-                  lastActivityAt = Date.now();
-                } else if (data?.type === "done" || data?.type === "stopped") {
-                  setGettingResponse(false);
-                  lastActivityAt = Date.now();
-                }
-              }
-            } catch {}
-          };
-          // Best-effort, don't persist this connection reference
-        }
-      }
-    } catch {}
 
     // Original onMount logic (as inferred from initial attempts)
     if (id()) {
@@ -251,17 +221,10 @@ function ChatWindow() {
   });
 
   onCleanup(() => {
-    shouldReconnect = false;
-    if (reconnectTimeout !== undefined) {
-      clearTimeout(reconnectTimeout);
+    if (unsubscribeWS) {
+      try { unsubscribeWS(); } catch {}
+      unsubscribeWS = null;
     }
-    if (heartbeatTimer !== undefined) {
-      clearInterval(heartbeatTimer);
-    }
-    try {
-      ws?.close();
-    } catch {}
-    ws = null;
   });
 
   createEffect(() => {
@@ -281,6 +244,8 @@ function ChatWindow() {
         setGettingResponse(false);
         setMessages([]);
         setConversationId(currentId);
+        // Drop any existing subscription; do not auto-subscribe unless active
+        if (unsubscribeWS) { try { unsubscribeWS(); } catch {} ; unsubscribeWS = null; }
         const startTime = performance.now(); 
 
         setLoading(true);
@@ -308,7 +273,10 @@ function ChatWindow() {
       // Ensure no active indicator leaks into new chat view
       setGettingResponse(false);
       setMessages([]);
-      setConversationId(crypto.randomUUID().toString());
+      const newId = crypto.randomUUID().toString();
+      setConversationId(newId);
+      // Do not subscribe for a new chat until a request starts
+      if (unsubscribeWS) { try { unsubscribeWS(); } catch {} ; unsubscribeWS = null; }
     }
   });
 
@@ -426,6 +394,19 @@ function ChatWindow() {
         debug('event', data?.type, { cid: data?.conversation_id })
         // Track per-conversation activity
         lastActivityAt = Date.now();
+        // Terminal or error events should immediately clear gettingResponse
+        if (data.type === "done" || data.type === "stopped" || data.type === "error") {
+          setGettingResponse(false);
+          return;
+        }
+        // If we receive a pong and current conversation isn't active, clear UI state
+        if (data.type === 'pong') {
+          const currentIdActive = Array.isArray(data.active_conversations) && data.active_conversations.includes(currentConversationId);
+          if (!currentIdActive) {
+            setGettingResponse(false);
+          }
+          return; // nothing else to do with pong
+        }
         let messagesChanged = false;
         let currentMessageState = [...messages()];
         let assistantMessageCreated =
@@ -504,62 +485,14 @@ function ChatWindow() {
       }
     };
 
-    // Ensure WebSocket connection for this conversation
-    const ensureWebSocket = () => {
-      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-      try {
-        const wsUrlBase = HOST.startsWith("https") ? HOST.replace("https", "wss") : HOST.replace("http", "ws");
-        const wsUrl = `${wsUrlBase}/api/v1/chats/ws?conversation_id=${currentConversationId}`;
-        debug('ws:connect', wsUrl)
-        ws = new WebSocket(wsUrl);
-        ws.onopen = () => {
-          debug('ws:open')
-          // connected - send an initial ping to discover active session state
-          try { ws?.send(JSON.stringify({ type: 'ping', ts: Date.now() })); } catch {}
-          lastActivityAt = Date.now();
-          // Start heartbeat every 2s if we have an active thread
-          if (heartbeatTimer !== undefined) {
-            clearInterval(heartbeatTimer);
-          }
-          heartbeatTimer = window.setInterval(() => {
-            const now = Date.now();
-            const inactiveMs = now - lastActivityAt;
-            // Only ping when UI thinks there is an active exchange
-            if (gettingResponse() && inactiveMs >= 2000) {
-              try { ws?.send(JSON.stringify({ type: 'ping', ts: now })); } catch {}
-              debug('ws:heartbeat_ping', { inactiveMs });
-            }
-          }, 2000);
-        };
-        ws.onmessage = (evt) => {
-          handleEventJsonString(evt.data);
-          try {
-            const parsed = JSON.parse(evt.data);
-            if (parsed?.type === "done" || parsed?.type === "stopped") {
-              setGettingResponse(false);
-              debug('ws:done')
-              lastActivityAt = Date.now();
-            }
-          } catch {}
-        };
-        ws.onclose = (ev) => {
-          debug('ws:close', { code: ev.code, reason: ev.reason })
-          if (heartbeatTimer !== undefined) {
-            clearInterval(heartbeatTimer);
-            heartbeatTimer = undefined;
-          }
-          if (shouldReconnect) {
-            // attempt reconnect after short delay
-            reconnectTimeout = window.setTimeout(() => ensureWebSocket(), 1500);
-          }
-        };
-        ws.onerror = (err) => {
-          debug('ws:error', err)
-          try { ws?.close(); } catch {}
-        };
-      } catch (e) {
-        console.error("WS connect error", e);
+    // Ensure a subscription for this conversation on the shared ws
+    const ensureSubscription = () => {
+      if (unsubscribeWS) {
+        try { unsubscribeWS(); } catch {}
+        unsubscribeWS = null;
       }
+      // Only subscribe when we start a request
+      unsubscribeWS = wsManager.subscribe(currentConversationId, handleEventJsonString);
     };
 
     try {
@@ -583,8 +516,8 @@ function ChatWindow() {
         throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
 
-      // Start or resume WS stream without holding the HTTP stream open
-      ensureWebSocket();
+      // Ensure shared socket subscription is active
+      ensureSubscription();
       // Conversation is created by the server on first message; verify now
       verifyIfExists(currentConversationId);
     } catch (error) {

@@ -357,18 +357,26 @@ async def chat_ws(websocket: WebSocket, conversation_id: str):
 
 @ws_chats_router.websocket("/ws-all")
 async def chat_ws_all(websocket: WebSocket, conversation_ids: str | None = None):
-    """Multiplexed websocket: forwards events for multiple conversation IDs.
-    Query param conversation_ids is a comma-separated list. If omitted, no subscriptions are created.
+    """Single multiplexed WebSocket for all chat updates.
+
+    Behaviors:
+    - Accepts optional initial subscriptions via `conversation_ids` query param (comma-separated).
+    - Supports dynamic subscribe/unsubscribe over the socket by sending JSON messages:
+        {"type": "subscribe", "conversation_ids": ["id1", "id2"]}
+        {"type": "unsubscribe", "conversation_ids": ["id1"]}
+      Also accepts single string as `conversation_id` for convenience.
+    - Echoes {"type": "ack"} for all well-formed client messages.
+    - Forwards all server-side events for subscribed conversations with `conversation_id` injected.
     """
     await websocket.accept()
 
-    ids: list[str] = []
-    if conversation_ids:
-        ids = [c.strip() for c in conversation_ids.split(",") if c.strip()]
+    # Track forwarder tasks per conversation id
+    forwarders: dict[str, asyncio.Task] = {}
 
-    forwarders: list[asyncio.Task] = []
-
-    async def make_forwarder(conv_id: str):
+    async def make_forwarder(conv_id: str) -> asyncio.Task:
+        # Avoid duplicate forwarders
+        if conv_id in forwarders:
+            return forwarders[conv_id]
         session_obj = get_or_create_session(conv_id)
 
         async def forward_events():
@@ -388,18 +396,75 @@ async def chat_ws_all(websocket: WebSocket, conversation_ids: str | None = None)
             except asyncio.CancelledError:
                 return
 
-        return asyncio.create_task(forward_events())
+        task = asyncio.create_task(forward_events())
+        forwarders[conv_id] = task
+        return task
 
-    for cid in ids:
-        forwarders.append(await make_forwarder(cid))
+    # Seed initial subscriptions from query param if provided
+    if conversation_ids:
+        ids = [c.strip() for c in conversation_ids.split(",") if c.strip()]
+        for cid in ids:
+            await make_forwarder(cid)
 
     try:
         while True:
-            _ = await websocket.receive_text()
+            raw = await websocket.receive_text()
+            # Default ACK for any message
+            try:
+                data = json.loads(raw)
+            except Exception:
+                data = None
+
+            if isinstance(data, dict):
+                msg_type = data.get("type")
+                # Normalize payload to list[str]
+                convs: list[str] = []
+                if "conversation_ids" in (data or {}):
+                    payload = data.get("conversation_ids")
+                    if isinstance(payload, list):
+                        convs = [str(x) for x in payload if isinstance(x, (str, int))]
+                    elif isinstance(payload, (str, int)):
+                        convs = [str(payload)]
+                elif "conversation_id" in (data or {}):
+                    payload = data.get("conversation_id")
+                    if isinstance(payload, (str, int)):
+                        convs = [str(payload)]
+
+                if msg_type == "subscribe" and convs:
+                    for cid in convs:
+                        await make_forwarder(cid)
+                    await websocket.send_text(json.dumps({"type": "ack", "subscribed": list(convs)}))
+                    continue
+                if msg_type == "unsubscribe" and convs:
+                    for cid in convs:
+                        t = forwarders.pop(cid, None)
+                        if t:
+                            t.cancel()
+                    await websocket.send_text(json.dumps({"type": "ack", "unsubscribed": list(convs)}))
+                    continue
+                if msg_type == "ping":
+                    # Return active sessions (by id) from running forwarders and global sessions
+                    active_ids: list[str] = []
+                    try:
+                        # forwarders we are subscribed to are considered active if their session is running
+                        for cid in list(forwarders.keys()):
+                            try:
+                                sess = get_or_create_session(cid)
+                                if sess.is_running() or getattr(sess, 'started', False):
+                                    active_ids.append(cid)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    await websocket.send_text(json.dumps({"type": "pong", "active_conversations": active_ids}))
+                    continue
+
+            # Default ACK for keepalives/unknown messages
             await websocket.send_text(json.dumps({"type": "ack"}))
     except WebSocketDisconnect:
-        for t in forwarders:
+        # Cancel all forwarders on disconnect
+        for t in list(forwarders.values()):
             t.cancel()
     except Exception:
-        for t in forwarders:
+        for t in list(forwarders.values()):
             t.cancel()

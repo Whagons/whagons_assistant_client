@@ -228,14 +228,14 @@ async def search_users(
 
 
 # Preferred model endpoints
-@user_router.get("/users/preferred-model", response_model=dict, tags=["user"])
+@user_router.get("/preferred-model", response_model=dict, tags=["user"])
 async def get_preferred_model(request: Request, session: DBSession = Depends(get_session)):
     current_user = request.state.user
     user = session.get(User, current_user.uid)
     return {"status": "success", "preferred_model": getattr(user, 'preferred_model', None)}
 
 
-@user_router.patch("/users/preferred-model", response_model=dict, tags=["user"])
+@user_router.patch("/preferred-model", response_model=dict, tags=["user"])
 async def update_preferred_model(model: str, request: Request, session: DBSession = Depends(get_session)):
     current_user = request.state.user
     user = session.get(User, current_user.uid)
