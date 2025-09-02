@@ -9,8 +9,20 @@ from sqlalchemy import String, Column, Text
 from dotenv import load_dotenv
 load_dotenv()
 
-# Define the database URL from environment variable
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./db/chat_history.sqlite")
+# Define the database URL from environment variable, normalizing deprecated postgres:// scheme
+raw_db_url = os.getenv("DATABASE_URL", "sqlite:///./db/chat_history.sqlite")
+
+def _normalize_db_url(url: str) -> str:
+    # SQLAlchemy requires 'postgresql' dialect; some environments provide 'postgres://'
+    # Convert to 'postgresql+psycopg2://' to ensure the correct driver is used
+    try:
+        if url and url.startswith("postgres://"):
+            return "postgresql+psycopg2://" + url[len("postgres://"):]
+    except Exception:
+        pass
+    return url
+
+DATABASE_URL = _normalize_db_url(raw_db_url)
 
 # Create models matching your frontend Prisma schema
 
