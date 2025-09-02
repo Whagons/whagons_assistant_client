@@ -1,3 +1,15 @@
+import os
+import sys
+# Ensure import path includes backend root when running in containers
+try:
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    backend_root = cwd
+    project_root = os.path.dirname(backend_root)
+    for p in [project_root, backend_root]:
+        if p not in sys.path:
+            sys.path.append(p)
+except Exception:
+    pass
 from __future__ import annotations as _annotations
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends

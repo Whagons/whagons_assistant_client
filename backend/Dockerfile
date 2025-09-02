@@ -12,7 +12,9 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Copy requirements file
+# Copy backend code only into /app to keep import root consistent
 COPY . .
+ENV PYTHONPATH=/app:/app/backend
 
 EXPOSE 8000
 

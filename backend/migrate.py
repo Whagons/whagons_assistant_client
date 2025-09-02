@@ -1,4 +1,18 @@
+import os
+import sys
 from sqlalchemy import text, inspect
+
+# Ensure /app and /app/backend are in sys.path when running inside Docker
+try:
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    backend_root = cwd
+    project_root = os.path.dirname(backend_root)
+    for p in [project_root, backend_root]:
+        if p not in sys.path:
+            sys.path.append(p)
+except Exception:
+    pass
+
 from db.models import engine, User, create_db_and_tables
 
 def add_new_columns():
