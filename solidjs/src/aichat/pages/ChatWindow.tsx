@@ -59,6 +59,9 @@ function ChatWindow() {
   let ws: WebSocket | null = null;
   let shouldReconnect = true;
   let reconnectTimeout: number | undefined;
+  // Heartbeat/ping state
+  let heartbeatTimer: number | undefined;
+  let lastActivityAt = 0;
   const { chats, setChats } = useChatContext();
   const navigate = useNavigate();
   // Track scroll positions for each conversation
@@ -130,6 +133,19 @@ function ChatWindow() {
     chatContainerRef.scrollTop = chatContainerRef.scrollHeight;
     // Hide button immediately
     setShowScrollToBottom(false);
+  }
+
+  // Verify conversation state only if it already exists server-side
+  async function verifyIfExists(cid: string) {
+    try {
+      const { authFetch } = await import("@/lib/utils");
+      const resp = await authFetch(`${HOST}/api/v1/chats/conversations/${cid}`);
+      if (resp.ok) {
+        import("../utils/memory_cache").then(({ DB }) => DB.verifyAndSync(cid));
+      }
+    } catch {
+      // ignore 404/Network here; conversation may not be created yet
+    }
   }
 
   // Save the current scroll position
@@ -204,8 +220,10 @@ function ChatWindow() {
               if (data?.conversation_id === conversationId()) {
                 if (data?.type === "part_start" || data?.type === "part_delta") {
                   setGettingResponse(true);
+                  lastActivityAt = Date.now();
                 } else if (data?.type === "done" || data?.type === "stopped") {
                   setGettingResponse(false);
+                  lastActivityAt = Date.now();
                 }
               }
             } catch {}
@@ -223,8 +241,8 @@ function ChatWindow() {
       setLoading(false);
       instantScrollToBottom();
       Prism.highlightAll();
-      // Verify and sync with server state after initial load
-      import("../utils/memory_cache").then(({ DB }) => DB.verifyAndSync(id()!));
+      // Verify only if conversation already exists (avoid 404 on brand new chats)
+      verifyIfExists(id()!);
     } else {
       console.log("onMount: On new chat route (/chat)");
       setMessages([]);
@@ -236,6 +254,9 @@ function ChatWindow() {
     shouldReconnect = false;
     if (reconnectTimeout !== undefined) {
       clearTimeout(reconnectTimeout);
+    }
+    if (heartbeatTimer !== undefined) {
+      clearInterval(heartbeatTimer);
     }
     try {
       ws?.close();
@@ -256,6 +277,8 @@ function ChatWindow() {
     const currentId = id();
     // Original effect logic (as inferred from initial attempts)
     if (currentId && currentId !== conversationId()) {
+        // Reset active state when switching chats
+        setGettingResponse(false);
         setMessages([]);
         setConversationId(currentId);
         const startTime = performance.now(); 
@@ -274,14 +297,16 @@ function ChatWindow() {
 
         instantScrollToBottom();
         Prism.highlightAll();
-        // Verify and sync on navigation
-        import("../utils/memory_cache").then(({ DB }) => DB.verifyAndSync(currentId));
+        // Verify only if conversation already exists (avoid 404 on brand new chats)
+        verifyIfExists(currentId);
     }
   });
 
   //if ID changes to undefined because new chat button clicked
   createEffect(() => {
     if (!id()) {
+      // Ensure no active indicator leaks into new chat view
+      setGettingResponse(false);
       setMessages([]);
       setConversationId(crypto.randomUUID().toString());
     }
@@ -399,6 +424,8 @@ function ChatWindow() {
       try {
         const data = JSON.parse(jsonString);
         debug('event', data?.type, { cid: data?.conversation_id })
+        // Track per-conversation activity
+        lastActivityAt = Date.now();
         let messagesChanged = false;
         let currentMessageState = [...messages()];
         let assistantMessageCreated =
@@ -426,10 +453,17 @@ function ChatWindow() {
               messagesChanged = true;
             }
             if (part.part_kind === "reasoning") {
-              const prevReasoning = typeof lastMessage.reasoning === "string" ? lastMessage.reasoning : "";
-              updated.reasoning = prevReasoning + (part.reasoning || "");
-              debug('reasoning_delta', { addLen: (part.reasoning || '').length, totalLen: updated.reasoning.length })
-              messagesChanged = true;
+              // Some providers send reasoning deltas in `content` instead of `reasoning`
+              const deltaText =
+                typeof (part as any).reasoning === 'string' && (part as any).reasoning !== ''
+                  ? (part as any).reasoning
+                  : (typeof (part as any).content === 'string' ? (part as any).content : '');
+              if (deltaText) {
+                const prevReasoning = typeof lastMessage.reasoning === "string" ? lastMessage.reasoning : "";
+                updated.reasoning = prevReasoning + deltaText;
+                debug('reasoning_delta', { addLen: deltaText.length, totalLen: updated.reasoning.length })
+                messagesChanged = true;
+              }
             }
             if (messagesChanged) {
               currentMessageState[currentMessageState.length - 1] = updated;
@@ -480,7 +514,22 @@ function ChatWindow() {
         ws = new WebSocket(wsUrl);
         ws.onopen = () => {
           debug('ws:open')
-          // connected
+          // connected - send an initial ping to discover active session state
+          try { ws?.send(JSON.stringify({ type: 'ping', ts: Date.now() })); } catch {}
+          lastActivityAt = Date.now();
+          // Start heartbeat every 2s if we have an active thread
+          if (heartbeatTimer !== undefined) {
+            clearInterval(heartbeatTimer);
+          }
+          heartbeatTimer = window.setInterval(() => {
+            const now = Date.now();
+            const inactiveMs = now - lastActivityAt;
+            // Only ping when UI thinks there is an active exchange
+            if (gettingResponse() && inactiveMs >= 2000) {
+              try { ws?.send(JSON.stringify({ type: 'ping', ts: now })); } catch {}
+              debug('ws:heartbeat_ping', { inactiveMs });
+            }
+          }, 2000);
         };
         ws.onmessage = (evt) => {
           handleEventJsonString(evt.data);
@@ -489,11 +538,16 @@ function ChatWindow() {
             if (parsed?.type === "done" || parsed?.type === "stopped") {
               setGettingResponse(false);
               debug('ws:done')
+              lastActivityAt = Date.now();
             }
           } catch {}
         };
         ws.onclose = (ev) => {
           debug('ws:close', { code: ev.code, reason: ev.reason })
+          if (heartbeatTimer !== undefined) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = undefined;
+          }
           if (shouldReconnect) {
             // attempt reconnect after short delay
             reconnectTimeout = window.setTimeout(() => ensureWebSocket(), 1500);
@@ -531,6 +585,8 @@ function ChatWindow() {
 
       // Start or resume WS stream without holding the HTTP stream open
       ensureWebSocket();
+      // Conversation is created by the server on first message; verify now
+      verifyIfExists(currentConversationId);
     } catch (error) {
       console.error("Error sending message:", error);
       // Revert optimistic messages (user + assistant placeholder) if present
@@ -704,7 +760,7 @@ function ChatWindow() {
                 >
 
                   {/* Inner div for message content centering and padding - REMOVED PADDING  md:max-w-[900px] mx-auto pt-20*/}
-                  <div class="mx-auto flex w-full max-w-3xl flex-col space-y-12 px-4 pb-10 pt-safe-offset-10 ">
+                  <div class="mx-auto flex w-full max-w-3xl flex-col px-4 pb-10 pt-safe-offset-10 ">
                     <For each={memoizedMessages()}>
                       {(message, index) => (
                         <Show
@@ -783,6 +839,7 @@ function ChatWindow() {
             gettingResponse={gettingResponse()}
             setIsListening={setIsListening}
             handleStopRequest={handleStopRequest}
+            conversationId={conversationId()}
           />
         </div>
       </Show>

@@ -13,6 +13,7 @@ interface ChatInputProps {
   // handleFileAttachment: () => void; // Prop seems unused, removed
   setIsListening: (isListening: boolean) => void;
   handleStopRequest: () => void;
+  conversationId: string;
 }
 
 const isImageData = (content: any): content is ImageData => {
@@ -30,15 +31,43 @@ const ChatInput: Component<ChatInputProps> = (props) => {
   const [textInput, setTextInput] = createSignal("");
   const [isDragging, setIsDragging] = createSignal(false);
   const [pendingUploads, setPendingUploads] = createSignal(0);
-  const [selectedModel, setSelectedModel] = createSignal<string>("Gemini 2.0 Flash");
+  const [selectedModel, setSelectedModel] = createSignal<string>("");
   const [isModelMenuOpen, setIsModelMenuOpen] = createSignal<boolean>(false);
-  const availableModels = [
-    "Gemini 2.0 Flash",
-    "GPT-4o mini",
-    "Claude 3.5 Sonnet",
-  ];
+  const [availableModels, setAvailableModels] = createSignal<string[]>([]);
   let fileInputRef: HTMLInputElement | undefined;
   let textInputRef: HTMLTextAreaElement | undefined;
+  // Load models and current conversation model
+  const loadModelsAndConversation = async () => {
+    try {
+      const { authFetch } = await import("@/lib/utils");
+      // Fetch available models
+      const modelsResp = await authFetch(`${HOST}/api/v1/chats/models`);
+      if (modelsResp.ok) {
+        const data = await modelsResp.json();
+        if (Array.isArray(data?.models)) {
+          setAvailableModels(data.models);
+        }
+      }
+      // Fetch current conversation model (verify returns conversation.model or user preferred)
+      if (props.conversationId) {
+        const convResp = await authFetch(`${HOST}/api/v1/chats/conversations/${props.conversationId}/verify`);
+        if (convResp.ok) {
+          const convData = await convResp.json();
+          const modelKey = convData?.model ?? convData?.conversation?.model;
+          if (typeof modelKey === 'string' && modelKey.length > 0) {
+            setSelectedModel(modelKey);
+          }
+        }
+      }
+      // Default selection if not set
+      if (!selectedModel() && availableModels().length > 0) {
+        setSelectedModel(availableModels()[0]);
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
 
   // Calculate if any uploads are in progress
   const isUploading = () => pendingUploads() > 0;
@@ -267,6 +296,37 @@ const ChatInput: Component<ChatInputProps> = (props) => {
     }
   }
 
+  // Handle selecting a model: PATCH backend and update state
+  const handleSelectModel = async (modelKey: string) => {
+    setIsModelMenuOpen(false);
+    // Optimistically reflect selection in UI
+    setSelectedModel(modelKey);
+    try {
+      const { authFetch } = await import("@/lib/utils");
+      let patched = false;
+      if (props.conversationId) {
+        // Ensure the conversation exists (auto-creates if missing)
+        try { await authFetch(`${HOST}/api/v1/chats/conversations/${props.conversationId}/verify`); } catch {}
+        try {
+          const url = new URL(`${HOST}/api/v1/chats/conversations/${props.conversationId}/model`);
+          url.searchParams.set("model", modelKey);
+          const resp = await authFetch(url.toString(), { method: "PATCH" });
+          patched = resp.ok;
+        } catch {}
+      }
+      // Fallback: if no conversation yet or PATCH failed, update user preferred model
+      if (!patched) {
+        try {
+          const u = new URL(`${HOST}/api/v1/users/preferred-model`);
+          u.searchParams.set("model", modelKey);
+          await authFetch(u.toString(), { method: "PATCH" });
+        } catch {}
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const removeContent = (index: number) => {
     const itemToRemove = content()[index];
     if (isImageData(itemToRemove.content) && itemToRemove.content.url?.startsWith('blob:')) {
@@ -275,6 +335,9 @@ const ChatInput: Component<ChatInputProps> = (props) => {
     // No blob URL to revoke for PDFs in this implementation
     setContent(prev => prev.filter((_, i) => i !== index));
   };
+
+  // Initialize models on mount
+  loadModelsAndConversation();
 
   return (
     <div class="flex flex-col gap-2">
@@ -403,20 +466,17 @@ const ChatInput: Component<ChatInputProps> = (props) => {
                     class="h-9 px-3 rounded-full border border-border/50 bg-transparent text-foreground text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-800"
                     onClick={() => setIsModelMenuOpen(!isModelMenuOpen())}
                   >
-                    {selectedModel()}
+                    {selectedModel() || 'Select model'}
                     <i class={`fas ${isModelMenuOpen() ? 'fa-chevron-up' : 'fa-chevron-down'} text-xs`}></i>
                   </button>
                   <Show when={isModelMenuOpen()}>
-                    <div class="absolute left-0 bottom-full mb-2 w-56 rounded-lg border border-border/50 bg-card shadow-lg z-20 p-1">
-                      <For each={availableModels}>
+                    <div class="absolute left-0 bottom-full mb-2 w-56 rounded-lg border border-border/50 bg-card shadow-lg z-[9999] p-1">
+                      <For each={availableModels()}>
                         {(m) => (
                           <button
                             type="button"
                             class="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-sm"
-                            onClick={() => {
-                              setSelectedModel(m);
-                              setIsModelMenuOpen(false);
-                            }}
+                            onClick={() => handleSelectModel(m)}
                           >
                             {m}
                           </button>
