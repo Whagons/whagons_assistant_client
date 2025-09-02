@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import sys
 # Ensure import path includes backend root when running in containers
@@ -10,7 +11,6 @@ try:
             sys.path.append(p)
 except Exception:
     pass
-from __future__ import annotations as _annotations
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi import Query
