@@ -11,7 +11,7 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const Login = lazy(() => import("./pages/Login"));
 const RequestWhitelist = lazy(() => import("./pages/RequestWhitelist"));
 const Animation = lazy(() => import("./pages/Animation"));
-const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+
 const WorkflowsPage = lazy(() => import("./pages/WorkflowsPage"));
 const WorkflowEditPage = lazy(() => import("./pages/WorkflowEditPage"));
 
@@ -72,16 +72,7 @@ function AppRoutes() {
           </PrivateRoute>
         )}
       />
-      <Route
-        path="/profile"
-        component={() => (
-          <PrivateRoute>
-            <Layout>
-              <ProfilePage />
-            </Layout>
-          </PrivateRoute>
-        )}
-      />
+
     </Suspense>
   );
 }

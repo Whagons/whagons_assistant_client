@@ -1,9 +1,6 @@
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { useAuth } from "@/lib/auth-context";
-import { signOut, auth } from "@/lib/firebase";
 import { useNavigate } from "@solidjs/router";
-import { LogOut, Settings, User } from "lucide-solid";
 import { createEffect } from "solid-js";
 
 interface AvatarDropdownProps {
