@@ -39,7 +39,7 @@ def get_workflow_context(workflow_id: str = None, session: Session = None) -> Di
     
     # Try to import and add Graph API functions
     try:
-        from ai.assistant_functions.graph import graph_api_request_no_ctx
+        from ai.tools.graph import graph_api_request_no_ctx
         
         # Create a default_api class to match the expected structure
         class DefaultApi:

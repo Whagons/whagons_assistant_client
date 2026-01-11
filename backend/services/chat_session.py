@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import re
+import time
 from datetime import datetime
 from typing import List, Union, Dict
 
@@ -14,6 +15,7 @@ from pydantic_ai.messages import (
     AudioUrl,
     DocumentUrl,
     BinaryContent,
+    TextPart,
 )
 
 from pydantic_ai._agent_graph import ModelRequestNode, CallToolsNode
@@ -21,6 +23,7 @@ from pydantic_graph import End
 
 from ai.core.agent_factory import MyDeps, create_agent
 from ai.core.prompts import get_system_prompt
+from ai.core.memory import ingest_message
 from database.models import Conversation, Message as DBMessage, MessageType, engine
 from sqlmodel import Session as DBSession
 
@@ -44,6 +47,11 @@ class ChatSession:
         self._table_chunk_size = 1000  # Larger chunks for tables
         # Track last emit time for debugging idle periods
         self._last_emit_ts: float | None = None
+        # Track total emitted characters for dynamic chunking
+        self._chars_emitted = 0
+        # Track time to first token
+        self._generation_start_time: float | None = None
+        self._has_logged_ttft = False
 
     def is_running(self) -> bool:
         return self.task is not None and not self.task.done()
@@ -107,8 +115,13 @@ class ChatSession:
         if '\n\n' in combined:
             return True
 
-        # Check size limits
-        chunk_size = self._table_chunk_size if self._table_detected else self._chunk_size
+        # Check size limits - dynamic buffering
+        if self._chars_emitted < 100:
+            # Very aggressive chunking for first tokens to improve perceived latency
+            chunk_size = 5
+        else:
+            chunk_size = self._table_chunk_size if self._table_detected else self._chunk_size
+            
         return len(combined) >= chunk_size
 
     def _get_optimal_chunk(self, new_content: str) -> str:
@@ -121,6 +134,7 @@ class ChatSession:
             if boundary < len(combined):
                 chunk = combined[:boundary]
                 self._content_buffer = combined[boundary:]
+                self._chars_emitted += len(chunk)
                 return chunk
 
         if '```' in combined:
@@ -128,19 +142,26 @@ class ChatSession:
             if boundary < len(combined):
                 chunk = combined[:boundary]
                 self._content_buffer = combined[boundary:]
+                self._chars_emitted += len(chunk)
                 return chunk
 
         if '\n\n' in combined:
             boundary = self._find_paragraph_boundary(combined)
             chunk = combined[:boundary]
             self._content_buffer = combined[boundary:]
+            self._chars_emitted += len(chunk)
             return chunk
 
-        # Default chunking based on size
-        chunk_size = self._table_chunk_size if self._table_detected else self._chunk_size
+        # Default chunking based on size with dynamic threshold
+        if self._chars_emitted < 100:
+            chunk_size = 5
+        else:
+            chunk_size = self._table_chunk_size if self._table_detected else self._chunk_size
+            
         if len(combined) >= chunk_size:
             chunk = combined[:chunk_size]
             self._content_buffer = combined[chunk_size:]
+            self._chars_emitted += len(chunk)
             return chunk
 
         # Accumulate more content
@@ -169,6 +190,11 @@ class ChatSession:
             if self._stream_debug:
                 self._logger.info("conv=%s already_running user=%s", self.conversation_id, getattr(current_user, 'uid', None))
             return
+        
+        # Reset TTFT tracking for new run
+        self._generation_start_time = time.perf_counter()
+        self._has_logged_ttft = False
+        
         if self._stream_debug:
             try:
                 kinds = []
@@ -186,7 +212,7 @@ class ChatSession:
                 )
             except Exception:
                 pass
-        self.deps_instance = MyDeps(user_object=current_user, user_rejection_flags={}, conversation_id=self.conversation_id)
+        self.deps_instance = MyDeps(user_object=current_user, user_rejection_flags={}, conversation_id=self.conversation_id, memory=memory or "")
         self.task = asyncio.create_task(self._run(current_user, user_content, has_pdfs, memory))
         self.started = True
 
@@ -201,9 +227,17 @@ class ChatSession:
                 message_history = get_message_history(conversation)
 
                 if len(message_history) > 0:
-                    system_prompt = message_history[0].parts[0].content
+                    system_msg = message_history[0]
+                    system_prompt = system_msg.parts[0].content
                     if system_prompt:
-                        message_history[0].parts[0].content = get_system_prompt(current_user, memory)
+                        system_msg.parts[0].content = get_system_prompt(current_user, memory)
+                    
+                    # Sandwich: System Prompt + Memories (already in system_prompt) + Last 10 messages
+                    other_messages = message_history[1:]
+                    if len(other_messages) > 10:
+                        other_messages = other_messages[-10:]
+                    
+                    message_history = [system_msg] + other_messages
 
                 if self._stream_debug:
                     self._logger.info("conv=%s agent_create start", self.conversation_id)
@@ -213,11 +247,12 @@ class ChatSession:
                 if self._stream_debug:
                     self._logger.info("conv=%s agent_create done", self.conversation_id)
 
-                async with agent.iter(
-                    deps=self.deps_instance,
-                    user_prompt=user_content,
-                    message_history=message_history,
-                ) as run:
+                try:
+                    async with agent.iter(
+                        deps=self.deps_instance,
+                        user_prompt=user_content,
+                        message_history=message_history,
+                    ) as run:
                         async for node in run:
                             if self._stream_debug:
                                 try:
@@ -230,6 +265,7 @@ class ChatSession:
                                 # Flush any remaining buffered content
                                 if self._content_buffer:
                                     await self._emit(json.dumps({"type": "content_chunk", "data": self._content_buffer}))
+                                    self._chars_emitted += len(self._content_buffer)
                                     self._content_buffer = ""
                                 break
                             if isinstance(node, ModelRequestNode):
@@ -317,6 +353,7 @@ class ChatSession:
                                             "conversation_id": self.conversation_id
                                         }
                                         await self._emit(json.dumps(chunk_event))
+                                        self._chars_emitted += len(self._content_buffer)
                                         self._content_buffer = ""
                             elif isinstance(node, CallToolsNode):
                                 if self._stream_debug:
@@ -342,6 +379,22 @@ class ChatSession:
                                 if conversation_obj:
                                     conversation_obj.updated_at = datetime.now()
                                 session.commit()
+                                
+                                # Ingest assistant response into memory
+                                try:
+                                    text_content_parts = []
+                                    for part in node.model_response.parts:
+                                        if isinstance(part, TextPart):
+                                            text_content_parts.append(part.content)
+                                    
+                                    if text_content_parts:
+                                        full_text = "\n".join(text_content_parts)
+                                        # Memory ingestion is now non-blocking (runs in background)
+                                        ingest_message("Assistant", full_text, database=current_user.uid)
+                                except Exception as e:
+                                    if self._stream_debug:
+                                        self._logger.error("conv=%s memory_ingest_error %s", self.conversation_id, e)
+
                                 if self._stream_debug:
                                     try:
                                         for part in node.model_response.parts:
@@ -355,6 +408,11 @@ class ChatSession:
                                                 )
                                     except Exception:
                                         pass
+
+                except Exception as e:
+                    self._logger.error(f"Error during agent execution: {e}", exc_info=True)
+                    print(f"❌ Error during agent execution: {e}")
+                    raise e
 
             await self._emit(json.dumps({"type": "done"}))
             if self._stream_debug:
@@ -381,6 +439,13 @@ class ChatSession:
             self.started = False
 
     async def _emit(self, data: str) -> None:
+        # Log time to first token
+        if not self._has_logged_ttft and self._generation_start_time is not None:
+            elapsed = time.perf_counter() - self._generation_start_time
+            self._logger.info(f"conv={self.conversation_id} time_to_first_token={elapsed:.4f}s")
+            print(f"🚀 TTFT for {self.conversation_id}: {elapsed:.4f}s")
+            self._has_logged_ttft = True
+
         try:
             self.queue.put_nowait("data: " + data + "\n\n")
             if self._stream_debug:
@@ -406,5 +471,3 @@ def get_or_create_session(conversation_id: str) -> ChatSession:
         session = ChatSession(conversation_id)
         chat_sessions[conversation_id] = session
     return session
-
-

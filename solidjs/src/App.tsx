@@ -66,9 +66,9 @@ function AppRoutes() {
         path="/settings"
         component={() => (
           <PrivateRoute>
-            <Layout>
+            {/* <Layout> */}
               <SettingsPage />
-            </Layout>
+            {/* </Layout> */}
           </PrivateRoute>
         )}
       />

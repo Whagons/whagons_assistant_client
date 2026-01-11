@@ -11,10 +11,13 @@ from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.google_gla import GoogleGLAProvider
 from pydantic_ai.models import cached_async_http_client
 import os
-import logging
+import httpx
 
-# Create a custom HTTP client with 5-minute timeout
-http_client = cached_async_http_client(timeout=300, connect=5)
+# Create a custom HTTP client with optimized connection pooling
+http_client = httpx.AsyncClient(
+    timeout=httpx.Timeout(60.0, connect=2.0),
+    limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=120),
+)
 
 # Define available models
 models = {
@@ -44,15 +47,8 @@ models = {
     #     "meta-llama/llama-4-scout-17b-16e-instruct",
     #     provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
     # ),
-    "claude-sonnet-4": OpenAIModel(
+    "sonnet-4": OpenAIModel(
         "anthropic/claude-sonnet-4",
-        provider=OpenAIProvider(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=os.getenv("OPENROUTER_API_KEY"),
-        ),
-    ),
-     "llama4-maverick": OpenAIModel(
-        "meta-llama/llama-4-maverick",
         provider=OpenAIProvider(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY"),
@@ -107,10 +103,18 @@ models = {
     #         api_key=os.getenv("OPENROUTER_API_KEY"),
     #     ),
     # ),
+
+    "grok-4-fast": OpenAIModel(
+        "x-ai/grok-4-fast",
+        provider=OpenAIProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        ),
+    ),
 }
 
 # Set default model
-DEFAULT_MODEL = "gpt-oss-120b"
+DEFAULT_MODEL = "gemini-2.0-flash"
 
 def get_model(model_key: str = None):
     """Get a model by key, fallback to default if not found."""

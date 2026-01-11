@@ -1,11 +1,9 @@
 from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File
+from fastapi.security import OAuth2PasswordRequestForm
 from firebase_admin import auth, storage
 from helpers.Firebase_helpers import Token
-from fastapi.security import (
-    OAuth2PasswordRequestForm,
-)
 import uuid
-from models.general import UserCredentials
+from models.api import UserCredentials
 from typing import List
 from pydantic import BaseModel
 from firebase_admin import auth

@@ -5,7 +5,7 @@ Provides a clean interface to AI agent creation and management.
 
 import logging
 from ai.core.agent_factory import create_agent, MyDeps
-from ai.config.models import get_model, get_available_models, DEFAULT_MODEL
+from ai.llms import get_model, get_available_models, DEFAULT_MODEL
 from helpers.Firebase_helpers import FirebaseUser
 
 # Configure logging

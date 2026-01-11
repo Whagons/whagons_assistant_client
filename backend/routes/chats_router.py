@@ -1,23 +1,23 @@
 import json
 import os
 import logging
+import time
 from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from requests import Session
 import asyncio
+from sqlmodel import Session as DBSession
 
 from ai.core.agent_factory import MyDeps
-from ai.core.prompts import get_system_prompt
-from ai.assistant_functions.memory_functions import get_memory_no_context
+from ai.core.memory import ingest_message, retrieve_memories
 from pydantic_ai.messages import ImageUrl  # noqa: F401
 from helpers.helper_funcs import geminiParts
-from database.models import get_session, User, Conversation
+from database.models import get_session, User, Conversation, engine
 from fastapi.responses import JSONResponse
-from services.chat_events import get_message_history
 from services.chat_session import get_or_create_session, chat_sessions
 
 
 
-from models.chat_models import (
+from models.api import (
     DocumentUrlContent,
     ChatRequest,
 )
@@ -32,6 +32,21 @@ def STREAM_DEBUG() -> bool:
     return os.getenv("STREAM_DEBUG", "0") == "1"
 
 stream_logger = logging.getLogger("chat.stream")
+
+async def update_title_background(chat_content, conversation_id: str):
+    """Background task to update conversation title."""
+    # Add a small delay to prevent contention with the initial chat response
+    await asyncio.sleep(2)
+    try:
+        title = await geminiParts(chat_content)
+        with DBSession(engine) as session:
+            conversation = session.get(Conversation, conversation_id)
+            if conversation:
+                conversation.title = title
+                session.add(conversation)
+                session.commit()
+    except Exception as e:
+        stream_logger.error(f"Error updating title for conversation {conversation_id}: {e}")
 
 # Chat session state and helpers moved to services.chat_session
 @chats_router.get("/running", response_model=dict)
@@ -84,8 +99,8 @@ async def chat(
                 session.add(user)
                 session.commit()
 
-            # Generate title using the mixed content
-            title = await geminiParts(chat_request.to_user_content())
+            # Initialize with temporary title
+            title = "New Chat" 
             # Inherit model from user at creation
             conversation = Conversation(
                 id=conversation_id,
@@ -95,17 +110,15 @@ async def chat(
             )
             session.add(conversation)
             session.commit()
-
-        # Get message history from the conversation
-        message_history = get_message_history(conversation)
+            
+            # Generate title in background
+            asyncio.create_task(update_title_background(chat_request.to_user_content(), conversation_id))
 
         # Check if message count is a multiple of 10 (excluding the new message we're about to add)
         message_count = len(conversation.messages)
         if message_count > 0 and message_count % 10 == 0:
-            # Generate a new title based on recent conversation
-            new_title = await geminiParts(chat_request.to_user_content())
-            conversation.title = new_title
-            session.commit()
+            # Generate a new title based on recent conversation in background
+            asyncio.create_task(update_title_background(chat_request.to_user_content(), conversation_id))
 
         ##refresh system prompt
         # Get first text content for memory context
@@ -119,14 +132,25 @@ async def chat(
         )
 
         ##only get memory if text content is not empty
-        memory = get_memory_no_context(request.state.user.uid, text_content) if text_content != "" else None
-
-        if len(message_history) > 0:
-            system_prompt = message_history[0].parts[0].content
-            if system_prompt:
-                message_history[0].parts[0].content = get_system_prompt(
-                    request.state.user, memory
-                )
+        memory_str = ""
+        if text_content:
+            # Ingest message in background (non-blocking)
+            ingest_message("User", text_content, database=request.state.user.uid)
+            
+            start_time = time.perf_counter()
+            memories = await retrieve_memories(text_content, limit=50, database=request.state.user.uid)
+            memories = {}
+            end_time = time.perf_counter()
+            if STREAM_DEBUG():
+                 stream_logger.info(f"Memory retrieval took: {end_time - start_time:.4f}s")
+            
+            if memories:
+                # Format memories (assuming they are objects with string representation or dictionaries)
+                # Since we don't know the exact structure of 'results' from graphiti, we'll try to be safe.
+                # If they are objects, str() usually gives something.
+                memory_str = "\n".join([f"- {str(m)}" for m in memories])
+        
+        memory = memory_str if memory_str else None
 
         # In the chat endpoint, before creating the agent:
         has_pdfs = any(

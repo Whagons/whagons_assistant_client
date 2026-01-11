@@ -2,9 +2,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from requests import Session
 
-from database.models import get_session, User, Conversation, Message as DBMessage
-from models.general import ConversationCreate, MessageCreate
-from ai.config.models import get_available_models
+from database.models import get_session, User, Conversation, Message as DBMessage, ConversationCreate, MessageCreate
+from ai.llms import get_available_models
 
 
 conversations_router = APIRouter(prefix="/chats")

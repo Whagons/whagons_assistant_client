@@ -31,6 +31,26 @@ class MessageType(str, Enum):
     ASSISTANT = "assistant"
     TOOL_CALL = "tool_call"
     TOOL_RESPONSE = "tool_response"
+
+# --- API Request Models (Create) ---
+# These are used for validating incoming data before creating DB entries.
+# They are placed here to keep the data definitions consolidated.
+
+class UserCreate(SQLModel):
+    email: str
+    name: Optional[str] = None
+
+class ConversationCreate(SQLModel):
+    title: str
+    user_id: str
+
+class MessageCreate(SQLModel):
+    content: str
+    message_type: MessageType = MessageType.USER
+    conversation_id: str
+
+# --- Database Models ---
+
 class User(SQLModel, table=True):
     id: str = Field(primary_key=True)
     email: str = Field(unique=True)

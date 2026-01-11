@@ -1,5 +1,5 @@
 import json
-from ai.assistant_functions.graph import graph_api_request_no_ctx as graph_api_request
+from ai.tools.graph import graph_api_request_no_ctx as graph_api_request
 
 def get_all_users():
     users = []

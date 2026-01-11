@@ -10,7 +10,7 @@ from error_logger.error_logger import ErrorLogger
 import traceback
 
 from pydantic_ai.tools import RunContext
-from ai.assistant_functions.graph import graph_api_request_no_ctx
+from ai.tools.graph import graph_api_request_no_ctx
 
 # Initialize error logger
 error_logger = ErrorLogger()
