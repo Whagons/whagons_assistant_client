@@ -19,6 +19,7 @@ from pydantic_ai.messages import (
 )
 
 from pydantic_ai._agent_graph import ModelRequestNode, CallToolsNode
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_graph import End
 
 from ai.core.agent_factory import MyDeps, create_agent
@@ -409,6 +410,12 @@ class ChatSession:
                                     except Exception:
                                         pass
 
+                except UnexpectedModelBehavior as e:
+                    # Tool validation errors that exceeded max retries - don't kill the chat
+                    # Let it propagate to outer handler which will send error and done messages
+                    self._logger.error(f"Tool validation error (max retries exceeded): {e}", exc_info=True)
+                    print(f"⚠️ Tool validation error: {e}")
+                    raise e  # Re-raise to let outer handler send error message to frontend
                 except Exception as e:
                     self._logger.error(f"Error during agent execution: {e}", exc_info=True)
                     print(f"❌ Error during agent execution: {e}")

@@ -27,28 +27,15 @@ models = {
             api_key=os.getenv("GEMINI_API_KEY"), http_client=http_client
         ),
     ),
-    "gemini-2.0-flash": GeminiModel(
-        "gemini-2.0-flash",
-        provider=GoogleGLAProvider(
-            api_key=os.getenv("GEMINI_API_KEY"), http_client=http_client
-        ),
-    ),
-    "gemini-2.5-flash-lite": GeminiModel(
-        "gemini-2.5-flash-lite",
-        provider=GoogleGLAProvider(
-            api_key=os.getenv("GEMINI_API_KEY"), http_client=http_client
-        ),
-    ),
-    # "deepseek-r1-distill-llama-70b": GroqModel(
-    #     "deepseek-r1-distill-llama-70b",
-    #     provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
-    # ),
-    #  "llama4-scout": GroqModel(
-    #     "meta-llama/llama-4-scout-17b-16e-instruct",
-    #     provider=GroqProvider(api_key=os.getenv("GROQ_API_KEY")),
-    # ),
     "sonnet-4": OpenAIModel(
         "anthropic/claude-sonnet-4",
+        provider=OpenAIProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        ),
+    ),
+    "sonnet-4.5": OpenAIModel(
+        "anthropic/claude-sonnet-4.5",
         provider=OpenAIProvider(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY"),
@@ -114,7 +101,7 @@ models = {
 }
 
 # Set default model
-DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 def get_model(model_key: str = None):
     """Get a model by key, fallback to default if not found."""

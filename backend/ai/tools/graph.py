@@ -16,17 +16,18 @@ def graph_api_request(
     endpoint_version: str,
     path: str,
     method: str,
-    # LLM provides body and query params as JSON strings
+    # LLM provides body and query params as JSON strings OR as dicts
     body_json: Optional[str] = None,
     query_params_json: Optional[str] = None,
+    query_params: Optional[Dict[str, Any]] = None,  # Accept dict format as alternative
     headers_json: Optional[str] = None
 ) -> Union[Dict[str, Any], List[Any]]:
     print(ctx)
     """
     Acts as a tool interface for the LLM to interact with Microsoft Graph API,
     delegating the actual request execution, header management, and auth handling
-    to the make_request helper. The LLM MUST provide body, query params, and headers
-    as VALID JSON formatted strings where applicable.
+    to the make_request helper. The LLM can provide body, query params, and headers
+    as VALID JSON formatted strings OR as dictionaries (query_params).
 
     Args:
         endpoint_version (str): 'v1.0' or 'beta'.
@@ -36,6 +37,8 @@ def graph_api_request(
                                    Keys/strings MUST use double quotes. Example: '{"displayName": "New Group"}'.
         query_params_json (Optional[str]): A **valid JSON string** for query parameters.
                                           Keys/strings MUST use double quotes. Example: '{"$select": "id,displayName"}'.
+        query_params (Optional[Dict[str, Any]]): Query parameters as a dictionary. Alternative to query_params_json.
+                                                 Example: {"$select": "id,displayName", "$filter": "startswith(displayName,'A')"}
         headers_json (Optional[str]): A **valid JSON string** for additional HTTP headers.
                                      Keys/strings MUST use double quotes. Example: '{"Prefer": "outlook.timezone=\"Eastern Standard Time\""}'. 
                                      Note: Authentication headers are automatically handled.
@@ -60,6 +63,27 @@ def graph_api_request(
     parsed_body: Optional[Any] = None
     parsed_query_params: Optional[Dict[str, str]] = None
     parsed_headers: Optional[Dict[str, str]] = None
+
+    # Convert query_params dict to query_params_json string if provided
+    if query_params is not None and query_params_json is None:
+        try:
+            query_params_json = json.dumps(query_params)
+            logging.debug(f"Converted query_params dict to JSON string: {query_params_json}")
+        except (TypeError, ValueError) as e:
+            error_params = {
+                "endpoint_version": endpoint_version,
+                "path": path,
+                "method": method,
+                "body_json": body_json,
+                "query_params": query_params,
+                "headers_json": headers_json
+            }
+            return error_logger.log_error(
+                function_name="graph_api_request",
+                error_text=f"Failed to convert query_params dict to JSON string: {str(e)}",
+                parameters=error_params,
+                stack_trace=traceback.format_exc()
+            )
 
     # query_params_json must be a JSON string if provided
 

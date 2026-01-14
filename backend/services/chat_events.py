@@ -16,6 +16,7 @@ from pydantic_ai.messages import (
     TextPart,
     TextPartDelta,
     ToolCallPart,
+    ToolCallPartDelta,
     ReasoningPart,
     ReasoningPartDelta,
     ToolReturnPart,
@@ -163,6 +164,30 @@ def event_to_dict(event):
                 },
                 "event_kind": event.event_kind,
             }
+        elif isinstance(event.part, ToolCallPart):
+            # Handle ToolCallPart in PartStartEvent
+            tool_call_id = event.part.tool_call_id
+            if not tool_call_id:
+                tool_call_id = generate_tool_call_id()
+            args_data = event.part.args
+            if isinstance(args_data, str):
+                try:
+                    args_data = json.loads(args_data)
+                except json.JSONDecodeError:
+                    pass  # Keep as string if not valid JSON
+            return {
+                "index": event.index,
+                "part": {
+                    "type": "ToolCallPart",
+                    "content": {
+                        "name": event.part.tool_name,
+                        "args": args_data,
+                        "tool_call_id": tool_call_id,
+                    },
+                    "part_kind": getattr(event.part, "part_kind", "tool-call"),
+                },
+                "event_kind": event.event_kind,
+            }
     elif isinstance(event, PartDeltaEvent):
         if isinstance(event.delta, TextPartDelta):
             return {
@@ -184,6 +209,29 @@ def event_to_dict(event):
                                or getattr(event.delta, "content_delta", None),
                     "part_kind": event.delta.part_delta_kind,
                 },
+                "event_kind": event.event_kind,
+            }
+        elif isinstance(event.delta, ToolCallPartDelta):
+            # Handle ToolCallPartDelta - convert to serializable dict
+            delta_dict = {
+                "part_kind": event.delta.part_delta_kind,
+            }
+            if hasattr(event.delta, "tool_name_delta") and event.delta.tool_name_delta:
+                delta_dict["tool_name_delta"] = event.delta.tool_name_delta
+            if hasattr(event.delta, "args_delta") and event.delta.args_delta:
+                # args_delta might be a dict or string, ensure it's serializable
+                args_delta = event.delta.args_delta
+                if isinstance(args_delta, str):
+                    try:
+                        args_delta = json.loads(args_delta)
+                    except json.JSONDecodeError:
+                        pass  # Keep as string if not valid JSON
+                delta_dict["args_delta"] = args_delta
+            if hasattr(event.delta, "tool_call_id_delta") and event.delta.tool_call_id_delta:
+                delta_dict["tool_call_id_delta"] = event.delta.tool_call_id_delta
+            return {
+                "index": event.index,
+                "delta": delta_dict,
                 "event_kind": event.event_kind,
             }
     elif isinstance(event, FunctionToolCallEvent):
