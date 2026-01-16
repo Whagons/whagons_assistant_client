@@ -12,85 +12,85 @@ interface MarkdownRendererProps {
 }
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = (props) => {
-  const content = useMemo(() => props.children || "", [props.children]);
+  const segments = useMemo(() => {
+    const content = props.children || "";
+    
+    // If no pipes, no tables possible
+    if (!content.includes('|')) {
+      return [{ type: 'text' as const, content }];
+    }
 
-  // Check if content contains table markdown
-  const hasTable = useMemo(() => {
-    const text = content;
-    return text.includes('|') && /\n\|[\s\-\w\|:]+\|\n/.test(text);
-  }, [content]);
+    const lines = content.split('\n');
+    const result: Array<{ type: 'text' | 'table'; content: string }> = [];
+    let textLines: string[] = [];
+    let tableLines: string[] = [];
+    let inTable = false;
 
-  // Extract table content if present
-  const tableContent = useMemo(() => {
-    if (!hasTable) return null;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const isTableRow = trimmed.startsWith('|') && trimmed.endsWith('|');
 
-    const text = content;
-    const lines = text.split('\n');
-
-    // Find table boundaries
-    let tableStart = -1;
-    let tableEnd = -1;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (line.startsWith('|') && line.endsWith('|')) {
-        if (tableStart === -1) {
-          tableStart = i;
+      if (isTableRow) {
+        if (!inTable) {
+          // Save accumulated text before starting table
+          if (textLines.length > 0) {
+            result.push({ type: 'text', content: textLines.join('\n') });
+            textLines = [];
+          }
+          inTable = true;
         }
-        tableEnd = i;
-      } else if (tableStart !== -1 && line !== '') {
-        // Found end of table (non-empty line after table)
-        break;
+        tableLines.push(line);
+      } else {
+        if (inTable) {
+          // Save completed table
+          if (tableLines.length > 0) {
+            result.push({ type: 'table', content: tableLines.join('\n') });
+            tableLines = [];
+          }
+          inTable = false;
+        }
+        textLines.push(line);
       }
     }
 
-    if (tableStart !== -1 && tableEnd !== -1) {
-      const tableLines = lines.slice(tableStart, tableEnd + 1);
-      return tableLines.join('\n');
+    // Flush remaining content
+    if (tableLines.length > 0) {
+      result.push({ type: 'table', content: tableLines.join('\n') });
+    }
+    if (textLines.length > 0) {
+      result.push({ type: 'text', content: textLines.join('\n') });
     }
 
-    return null;
-  }, [hasTable, content]);
-
-  // Get non-table content
-  const nonTableContent = useMemo(() => {
-    if (!hasTable) return content;
-
-    const text = content;
-    const tableMatch = tableContent;
-
-    if (tableMatch) {
-      return text.replace(tableMatch, '').trim();
-    }
-
-    return text;
-  }, [hasTable, content, tableContent]);
+    return result.length > 0 ? result : [{ type: 'text' as const, content }];
+  }, [props.children]);
 
   return (
     <div className="markdown-renderer">
-      {hasTable && tableContent && (
-        <TableRenderer
-          content={tableContent}
-          isStreaming={props.isStreaming}
-        />
-      )}
-
-      {nonTableContent && (
-        <ReactMarkdown
-          components={{
-            pre: CustomPre,
-            table: () => null, // Disable table rendering in ReactMarkdown
-            thead: () => null,
-            tbody: () => null,
-            tr: () => null,
-            th: () => null,
-            td: () => null
-          }}
-          remarkPlugins={[remarkGfm, remarkBreaks, supersub]}
-          rehypePlugins={[]}
-        >
-          {nonTableContent}
-        </ReactMarkdown>
+      {segments.map((segment, idx) =>
+        segment.type === 'table' ? (
+          <TableRenderer
+            key={idx}
+            content={segment.content}
+            isStreaming={props.isStreaming}
+          />
+        ) : (
+          <ReactMarkdown
+            key={idx}
+            components={{
+              pre: CustomPre as any,
+              table: () => null,
+              thead: () => null,
+              tbody: () => null,
+              tr: () => null,
+              th: () => null,
+              td: () => null
+            }}
+            remarkPlugins={[remarkGfm, remarkBreaks, supersub]}
+            rehypePlugins={[]}
+          >
+            {segment.content}
+          </ReactMarkdown>
+        )
       )}
     </div>
   );

@@ -368,13 +368,15 @@ function ToolMessageRenderer({
                 </div>
               </button>
               <div
-                className="overflow-hidden transition-all duration-300 ease-in-out border-t-0 rounded-b-md bg-gradient-to-b from-primary/5 to-transparent shadow-sm"
+                className="overflow-hidden transition-all duration-300 ease-in-out rounded-b-md bg-gradient-to-b from-primary/5 to-transparent shadow-sm"
                 style={{
                   maxHeight: isOpen ? "1000px" : "0",
                   opacity: isOpen ? 1 : 0,
                   visibility: isOpen ? "visible" : "hidden",
-                  border: isOpen ? "1px solid var(--border)" : "none",
                   borderTop: "none",
+                  borderRight: isOpen ? "1px solid var(--border)" : "none",
+                  borderBottom: isOpen ? "1px solid var(--border)" : "none",
+                  borderLeft: isOpen ? "1px solid var(--border)" : "none",
                 }}
               >
                 {isOpen && (

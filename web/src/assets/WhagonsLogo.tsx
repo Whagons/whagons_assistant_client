@@ -3,8 +3,6 @@ import { useTheme } from "@/lib/theme-provider";
 function WhagonsLogo({fill, darkFill, width, height}: {fill: string, darkFill?: string, width: number, height: number}) {
   const { theme } = useTheme();
   
-  // For background: dark in dark mode, light in light mode
-  const bgFill = theme === "dark" ? "#16181d" : "#ffffff";
   // For strokes and dots: light color in dark mode, dark color in light mode
   const strokeColor = theme === "dark" ? (darkFill || "#d1d5db") : fill;
   
@@ -15,7 +13,6 @@ function WhagonsLogo({fill, darkFill, width, height}: {fill: string, darkFill?: 
       viewBox="0 0 600 200"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <rect width="100%" height="100%" fill={bgFill}/>
 
       <g fill="none" stroke={strokeColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
         

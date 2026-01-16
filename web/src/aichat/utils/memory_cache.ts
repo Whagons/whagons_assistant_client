@@ -558,8 +558,13 @@ export class ConversationCache {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      if (data.status === "success" && Array.isArray(data.conversations)) {
-        const sortedConversations = data.conversations
+      console.log('[ConversationCache] Raw response data:', data);
+      console.log('[ConversationCache] Is array?', Array.isArray(data));
+      
+      // Backend returns array directly
+      if (Array.isArray(data)) {
+        console.log('[ConversationCache] Processing', data.length, 'conversations');
+        const sortedConversations = data
           .map((conv: Conversation) => ({
             id: conv.id.toString(),
             title: conv.title,
@@ -599,10 +604,12 @@ export class ConversationCache {
 
         // Update the state with fresh data
         if (response.status === 200) {
+          console.log('[ConversationCache] Saving', sortedConversations.length, 'conversations to cache');
           ConversationCache.set(sortedConversations);
         }
         return sortedConversations;
       }
+      console.warn('[ConversationCache] Data is not an array, returning empty');
       return [];
     } catch (error) {
       console.error("Failed to fetch conversations:", error);

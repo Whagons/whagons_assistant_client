@@ -16,6 +16,8 @@ import { convertToChatMessages, HOST } from "../utils/utils";
 import { createWSManager } from "../utils/ws";
 import ToolMessageRenderer, { ToolCallMap } from "../components/ToolMessageRenderer";
 import NewChat from "../components/NewChat";
+import { processFrontendTool, isFrontendTool } from "../utils/frontend_tools";
+import { handleFrontendToolPromptMessage } from "../utils/frontend_tool_prompts";
 
 // Component to render user message content
 
@@ -400,6 +402,14 @@ function ChatWindow() {
       // Track activity
       lastActivityAtRef.current = Date.now();
       
+      // Handle frontend tool prompts (tool-specific messages, not chat content)
+      if (data.type === "frontend_tool_prompt") {
+        handleFrontendToolPromptMessage(data, (payload) => {
+          wsManager.send(currentConversationId, payload);
+        });
+        return; // Don't process as chat message
+      }
+      
       // Handle terminal events
       if (data.type === "done" || data.type === "stopped" || data.type === "error") {
         debug('ws:terminal', data.type);
@@ -417,6 +427,18 @@ function ChatWindow() {
 
       // Handle structured tool_result messages
       if (data.type === "tool_result") {
+        // Process frontend tools (Browser_Alert, Browser_Prompt, etc.) if applicable
+        if (data.function_name && data.result && isFrontendTool(data.function_name)) {
+          // Create a callback to send user responses back to the AI
+          const sendResponseMessage = (message: string) => {
+            if (message && !gettingResponse) {
+              handleSubmit(message);
+            }
+          };
+          
+          processFrontendTool(data.function_name, data.result, sendResponseMessage);
+        }
+        
         setMessages(prevMessages => {
           const currentMessageState = [...prevMessages];
           
@@ -582,7 +604,7 @@ function ChatWindow() {
     };
 
     // Subscribe to WebSocket events for this session
-    const ensureSubscription = () => {
+    const ensureSubscription = async () => {
       // Always close existing connection before creating new one (backend closes after each message)
       if (unsubscribeWSRef.current) {
         debug('ws:cleanup', 'Closing previous connection');
@@ -598,7 +620,7 @@ function ChatWindow() {
       debug('ws:subscribe', currentConversationId, 'model:', selectedModel);
       
       // Create new subscription (will create new WebSocket connection)
-      unsubscribeWSRef.current = wsManager.subscribe(currentConversationId, handleWebSocketEvent, selectedModel);
+      unsubscribeWSRef.current = await wsManager.subscribe(currentConversationId, handleWebSocketEvent, selectedModel);
     };
 
     try {

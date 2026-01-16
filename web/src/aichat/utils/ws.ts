@@ -22,22 +22,48 @@ class SessionWSManager {
   /**
    * Connect to a specific session's WebSocket endpoint
    */
-  private connect(sessionId: string, modelId?: string): WebSocket {
+  private async connect(sessionId: string, modelId?: string): Promise<WebSocket> {
     // Check if already connected
     const existing = this.connections.get(sessionId);
     if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
       return existing;
     }
 
+    // Get Firebase token for authentication
+    const { auth } = await import("@/lib/firebase");
+    const user = auth.currentUser;
+    let token = "";
+    
+    if (user) {
+      try {
+        token = await user.getIdToken();
+      } catch (error) {
+        console.error("[WS] Failed to get Firebase token:", error);
+      }
+    }
+
     // Create WebSocket URL matching Go backend: /api/v1/chat/ws/{session_id}
     let wsUrl = `${this.urlBase}/api/v1/chat/ws/${sessionId}`;
     
-    // Add model parameter if provided
+    console.log(`[WS] Model ID received:`, modelId, 'Type:', typeof modelId);
+    
+    // Add query parameters (model and token)
+    const params = new URLSearchParams();
     if (modelId) {
-      wsUrl += `?model=${encodeURIComponent(modelId)}`;
+      console.log(`[WS] Adding model parameter:`, modelId);
+      params.append('model', modelId);
+    } else {
+      console.log(`[WS] No model ID provided, using backend default`);
+    }
+    if (token) {
+      params.append('token', token);
     }
     
-    console.log(`[WS] Connecting to: ${wsUrl}`);
+    if (params.toString()) {
+      wsUrl += `?${params.toString()}`;
+    }
+    
+    console.log(`[WS] Connecting to: ${wsUrl.replace(token, 'TOKEN_HIDDEN')}`);
     
     const ws = new WebSocket(wsUrl);
     this.connections.set(sessionId, ws);
@@ -114,7 +140,7 @@ class SessionWSManager {
   /**
    * Subscribe to WebSocket events for a specific session
    */
-  subscribe(sessionId: string, handler: EventHandler, modelId?: string): () => void {
+  async subscribe(sessionId: string, handler: EventHandler, modelId?: string): Promise<() => void> {
     if (!sessionId) {
       console.warn('[WS] Cannot subscribe without session ID');
       return () => {};
@@ -133,7 +159,7 @@ class SessionWSManager {
     }
 
     // Connect to WebSocket with optional model
-    this.connect(sessionId, modelId);
+    await this.connect(sessionId, modelId);
 
     // Return unsubscribe function
     return () => {

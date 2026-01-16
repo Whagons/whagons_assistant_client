@@ -56,9 +56,16 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
           }
         }
       }
-      // Default selection if not set
-      if (!selectedModel && availableModels.length > 0) {
-        setSelectedModel(availableModels[0].id);
+      // Load from localStorage first, then default to first available
+      const storedModel = localStorage.getItem("preferred_model");
+      if (storedModel && !selectedModel) {
+        setSelectedModel(storedModel);
+        console.log("[ChatInput] Loaded model from localStorage:", storedModel);
+      } else if (!selectedModel && availableModels.length > 0) {
+        const defaultModel = availableModels[0].id;
+        setSelectedModel(defaultModel);
+        localStorage.setItem("preferred_model", defaultModel);
+        console.log("[ChatInput] Set default model:", defaultModel);
       }
     } catch (e) {
       // ignore
@@ -302,6 +309,10 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
     setIsModelMenuOpen(false);
     // Optimistically reflect selection in UI
     setSelectedModel(modelKey);
+    // Save to localStorage immediately
+    localStorage.setItem("preferred_model", modelKey);
+    console.log("[ChatInput] Selected and saved model to localStorage:", modelKey);
+    
     try {
       const { authFetch } = await import("@/lib/utils");
       let patched = false;
