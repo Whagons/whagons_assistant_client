@@ -847,6 +847,7 @@ export interface ModelConfig {
   description: string;
   context_size?: number;
   capabilities?: string[];
+  favorite?: boolean;
 }
 
 // Cache for models to prevent redundant API calls

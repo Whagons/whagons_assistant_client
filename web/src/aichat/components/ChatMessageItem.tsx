@@ -34,6 +34,13 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = (props) => {
                     src={imageContent.serverUrl || imageContent.url}
                     alt="User uploaded image"
                     className="max-w-full h-auto rounded-lg shadow-lg hover:shadow-xl transition-shadow"
+                    onError={(e) => {
+                      // Replace broken image with placeholder
+                      const target = e.target as HTMLImageElement;
+                      target.onerror = null;
+                      target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='150' viewBox='0 0 200 150'%3E%3Crect fill='%23374151' width='200' height='150'/%3E%3Ctext fill='%239CA3AF' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='system-ui' font-size='14'%3EImage unavailable%3C/text%3E%3C/svg%3E";
+                      target.className = "max-w-[200px] h-auto rounded-lg opacity-60";
+                    }}
                   />
                 </div>
               );

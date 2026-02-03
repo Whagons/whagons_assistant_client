@@ -116,6 +116,31 @@ html, body, #root {
   overscroll-behavior: none;
 }
 
+/* Global scrollbar styling for dark mode */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 100vh;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 100vh;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--scrollbar-thumb) 80%, white 20%);
+}
+
 @layer base {
   :root {
     /* Sidebar (light mode) — softer neutral with better contrast */

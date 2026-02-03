@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { ContentItem, ImageData, PdfData } from "../models/models";
 import WaveIcon from "./WaveIcon";
-import { ModelsCache } from "../utils/memory_cache";
+import { ModelsCache, ModelConfig } from "../utils/memory_cache";
+import { toast } from "sonner";
 
 const HOST = import.meta.env.VITE_CHAT_HOST;
 
@@ -30,9 +31,32 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
   const [pendingUploads, setPendingUploads] = useState(0);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [isModelMenuOpen, setIsModelMenuOpen] = useState<boolean>(false);
-  const [availableModels, setAvailableModels] = useState<Array<{id: string; display_name: string; provider: string; description: string}>>([]);
+  const [showAllModels, setShowAllModels] = useState<boolean>(false);
+  const [availableModels, setAvailableModels] = useState<ModelConfig[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Get current model's capabilities
+  const currentModelConfig = useMemo(() => {
+    return availableModels.find(m => m.id === selectedModel);
+  }, [availableModels, selectedModel]);
+
+  const currentModelSupportsVision = useMemo(() => {
+    return currentModelConfig?.capabilities?.includes("vision") ?? false;
+  }, [currentModelConfig]);
+
+  const currentModelSupportsPdf = useMemo(() => {
+    return currentModelConfig?.capabilities?.includes("pdf") ?? false;
+  }, [currentModelConfig]);
+
+  // Get favorite models (max 5) and all models
+  const favoriteModels = useMemo(() => {
+    return availableModels.filter(m => m.favorite).slice(0, 5);
+  }, [availableModels]);
+
+  const displayedModels = useMemo(() => {
+    return showAllModels ? availableModels : favoriteModels;
+  }, [showAllModels, availableModels, favoriteModels]);
 
   // Load models (using cache) and set selected model from localStorage
   const loadModels = async () => {
@@ -43,9 +67,13 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
       
       // Load from localStorage first, then default to first available
       const storedModel = localStorage.getItem("preferred_model");
-      if (storedModel) {
+      // Verify stored model still exists in available models
+      const storedModelExists = storedModel && models.some(m => m.id === storedModel);
+      
+      if (storedModelExists) {
         setSelectedModel(storedModel);
       } else if (models.length > 0) {
+        // Stored model doesn't exist anymore, use first available
         const defaultModel = models[0].id;
         setSelectedModel(defaultModel);
         localStorage.setItem("preferred_model", defaultModel);
@@ -119,6 +147,27 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
     // Filter for allowed file types
     const allowedFiles = files.filter(file => file.type.startsWith("image/") || file.type === "application/pdf");
     if (allowedFiles.length === 0) return;
+
+    // Check for images and vision support
+    const hasImages = allowedFiles.some(f => f.type.startsWith("image/"));
+    const hasPdfs = allowedFiles.some(f => f.type === "application/pdf");
+
+    if (hasImages && !currentModelSupportsVision) {
+      toast.error("Current model doesn't support images", {
+        description: `${currentModelConfig?.display_name || 'This model'} cannot process images. Please switch to a vision-capable model like Gemini 2.0 Flash, Claude Sonnet 4.5, or Qwen3 VL.`,
+        duration: 5000,
+      });
+      return;
+    }
+
+    if (hasPdfs && !currentModelSupportsPdf) {
+      toast.info("Switching to Gemini for PDF support", {
+        description: "PDFs are best handled by Gemini 2.0 Flash. Switching model automatically.",
+        duration: 4000,
+      });
+      // Auto-switch to Gemini for PDF support
+      await handleSelectModel("gemini-2.0-flash");
+    }
 
     // Increment the upload counter for each allowed file
     setPendingUploads(prev => prev + allowedFiles.length);
@@ -451,24 +500,71 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
                   <button
                     type="button"
                     className="h-9 px-3 rounded-full border border-border/50 bg-transparent text-foreground text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-800"
-                    onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+                    onClick={() => { setIsModelMenuOpen(!isModelMenuOpen); setShowAllModels(false); }}
                   >
-                    {availableModels.find(m => m.id === selectedModel)?.display_name || selectedModel || 'Select model'}
+                    <span className="flex items-center gap-1.5">
+                      {availableModels.find(m => m.id === selectedModel)?.display_name || selectedModel || 'Select model'}
+                      {currentModelSupportsVision && (
+                        <i className="fas fa-eye text-[10px] text-blue-500" title="Supports images"></i>
+                      )}
+                      {currentModelSupportsPdf && (
+                        <i className="fas fa-file-pdf text-[10px] text-red-500" title="Supports PDFs"></i>
+                      )}
+                    </span>
                     <i className={`fas ${isModelMenuOpen ? 'fa-chevron-up' : 'fa-chevron-down'} text-xs`}></i>
                   </button>
                   {isModelMenuOpen && (
-                    <div className="absolute left-0 bottom-full mb-2 w-56 rounded-lg border border-border/50 bg-card shadow-lg z-[9999] p-1">
-                      {availableModels.map((m) => (
+                    <div className="absolute left-0 bottom-full mb-2 w-64 rounded-lg border border-border/50 bg-card shadow-lg z-[9999] p-1 max-h-80 overflow-y-auto">
+                      {!showAllModels && (
+                        <div className="px-2 py-1 text-xs text-muted-foreground font-medium border-b border-border/30 mb-1">
+                          Favorites
+                        </div>
+                      )}
+                      {displayedModels.map((m) => (
                         <button
                           key={m.id}
                           type="button"
-                          className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-sm"
+                          className={`w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-sm ${selectedModel === m.id ? 'bg-primary/10' : ''}`}
                           onClick={() => handleSelectModel(m.id)}
                         >
-                          <div className="font-medium">{m.display_name}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium flex-1">{m.display_name}</span>
+                            <span className="flex items-center gap-1">
+                              {m.capabilities?.includes("vision") && (
+                                <i className="fas fa-eye text-[10px] text-blue-500" title="Vision"></i>
+                              )}
+                              {m.capabilities?.includes("pdf") && (
+                                <i className="fas fa-file-pdf text-[10px] text-red-500" title="PDF"></i>
+                              )}
+                            </span>
+                          </div>
                           <div className="text-xs text-muted-foreground">{m.description}</div>
                         </button>
                       ))}
+                      {!showAllModels && availableModels.length > favoriteModels.length && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-sm text-primary border-t border-border/30 mt-1"
+                          onClick={(e) => { e.stopPropagation(); setShowAllModels(true); }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <i className="fas fa-ellipsis-h"></i>
+                            <span>Show all models ({availableModels.length})</span>
+                          </div>
+                        </button>
+                      )}
+                      {showAllModels && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-sm text-muted-foreground border-t border-border/30 mt-1"
+                          onClick={(e) => { e.stopPropagation(); setShowAllModels(false); }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <i className="fas fa-chevron-left"></i>
+                            <span>Show favorites only</span>
+                          </div>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

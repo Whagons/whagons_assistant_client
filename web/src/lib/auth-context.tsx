@@ -63,7 +63,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           }
         } catch (error) {
           console.error("Error fetching user claims:", error);
-          setIsWhitelisted(false);
+          // Don't reset isWhitelisted here - it's already set to true above
           setIsSuperAdmin(false);
         }
       } else {
