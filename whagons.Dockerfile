@@ -1,33 +1,27 @@
 # Whagons Assistant Frontend
-# Uses local config from configs/whagons
-#
-# In Coolify: set Dockerfile path to "web/whagons.Dockerfile"
+# Dockerfile path in Coolify: whagons.Dockerfile
 
-# Stage 1: Build the frontend
 FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Install root deps (yaml parser for apply-config)
+# Copy package files and install deps
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copy configs, scripts, defaults, and web
-COPY configs/whagons ./config
-COPY scripts ./scripts
-COPY defaults ./defaults
-COPY web ./web
+# Copy source and config
+COPY . .
+COPY configs/whagons/app.yaml ./config/app.yaml
+COPY configs/whagons/favicon.ico ./src/assets/favicon.ico
+COPY configs/whagons/logo.svg ./src/assets/logo.svg
 
-# Install web deps
-RUN cd web && npm ci
-
-# Apply config + build
+# Build
 RUN npm run build
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine
 
-COPY --from=builder /app/web/dist /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 # SPA fallback
 RUN echo 'server { \

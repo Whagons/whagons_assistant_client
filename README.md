@@ -1,29 +1,75 @@
-# NCA Assistant
+# Whagons Assistant Client
 
-A comprehensive Microsoft-focused assistant application designed to enhance productivity and streamline Microsoft ecosystem operations.
+React/TypeScript frontend for Whagons Assistant.
 
-## Description
+## Local Development
 
-NCA Assistant is a specialized tool built for the Microsoft ecosystem, focusing on integrating and managing various Microsoft services and applications. It provides seamless interaction with Microsoft platforms and services to improve workflow efficiency and user experience.
+```bash
+# Install dependencies
+npm install
 
-## Features
+# Create .env with Firebase config
+cat > .env << 'EOF'
+VITE_CHAT_HOST=http://localhost:8080
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project
+VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
+EOF
 
-- Lynx app integration
-- SharePoint management capabilities
-- Voice support functionality
+# Run dev server
+npm run dev
+```
 
-## Todo List
+## Deployment Configs
 
-- [ ] Add Lynx app integration
-- [ ] Add SharePoint Management
-- [ ] Add Voice Support
-- [ ] Visual feedback during tool use
-- [ ] Indicate when an error has occured.
-- [ ] Add role base permissions for functions
-- [ ] Add user management within app
-- [ ] Add email parsing and suggestions
-    - [ ] Display email
-    - [ ] Notifications take you to in app suggested actions
+Each deployment has its own config in `configs/`:
 
+```
+configs/
+├── nca/
+│   ├── app.yaml      # App name, auth provider
+│   ├── favicon.ico
+│   └── logo.svg
+└── whagons/
+    ├── app.yaml
+    ├── favicon.ico
+    └── logo.svg
+```
 
+## Dockerfiles
 
+| Dockerfile | Deployment | Auth |
+|------------|------------|------|
+| `nca.Dockerfile` | NCA Assistant | Microsoft |
+| `whagons.Dockerfile` | Whagons Assistant | Google |
+
+### Coolify Setup
+
+1. Create application from `whagons_assistant_client` repo
+2. Set Dockerfile path to `nca.Dockerfile` or `whagons.Dockerfile`
+3. Add environment variables (Firebase config)
+4. Deploy
+
+## Environment Variables
+
+Required:
+```
+VITE_CHAT_HOST=https://your-backend.com
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+```
+
+Optional:
+```
+VITE_FIREBASE_MEASUREMENT_ID=...
+VITE_APP_NAME=My Assistant
+VITE_AUTH_PROVIDER=google
+VITE_AUTH_TENANT=
+```

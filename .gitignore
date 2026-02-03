@@ -1,10 +1,13 @@
+backend.env
+backend/.env
 backend/error_logger/error_logs.db
-# config/ is a symlink to active config in configs/
 config
+# config/ is a symlink to active config in configs/
+dist
+.env
+*.env.local
+**/firebase_credentials.json
+node_modules
+node_modules/
 web/.env
 web/.env.local
-backend/.env
-backend.env
-**/firebase_credentials.json
-node_modules/
-*.env.local
