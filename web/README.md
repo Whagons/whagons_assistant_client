@@ -123,6 +123,31 @@ Make sure to set up the following environment variables (same as SolidJS version
 - `VITE_FIREBASE_MEASUREMENT_ID`
 - `VITE_CHAT_HOST`
 
+## Docker Deployment
+
+Two Dockerfiles are provided for different deployments:
+
+| Dockerfile | Config Repo | Use Case |
+|------------|-------------|----------|
+| `nca.Dockerfile` | `Desarso/nca_assistant_config` | NCA deployment (Microsoft auth) |
+| `whagons.Dockerfile` | `Desarso/whagons_assistant_config` | Whagons deployment (Google auth) |
+
+### Coolify Setup
+
+1. **Create application** from the `whagons_assistant_client` repo
+2. **Set Dockerfile path** to either:
+   - `web/nca.Dockerfile` for NCA
+   - `web/whagons.Dockerfile` for Whagons
+3. **Add build argument**:
+   - `GH_TOKEN` = your GitHub personal access token (needs repo read access)
+4. **Deploy**
+
+The Dockerfile clones the config repo at build time, runs `apply-config`, and builds the frontend.
+
+### Auto-Deploy on Config Changes
+
+Each config repo has a GitHub Actions workflow that triggers a Coolify redeploy when you push changes. See the config repo README for details.
+
 ## Notes
 
 - The translation maintains the same folder structure and component organization as the SolidJS version

@@ -1,0 +1,13 @@
+{
+  "name": "whagons-assistant-client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "apply-config": "node scripts/apply-config.mjs",
+    "dev": "npm run apply-config && cd web && npm run dev",
+    "build": "npm run apply-config && cd web && npm run build"
+  },
+  "devDependencies": {
+    "yaml": "^2.4.0"
+  }
+}

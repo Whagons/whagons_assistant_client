@@ -1,0 +1,81 @@
+############################################
+# Config Repo Structure
+############################################
+# Your config repo contains static assets and content files.
+# NO secrets, NO API keys, NO .env variables.
+#
+# config/
+#   app.yaml                   <- this file (branding + feature flags)
+#   favicon.ico                <- browser favicon
+#   logo.svg                   <- sidebar logo
+#   whitelist.yaml             <- email whitelist
+#   pwa-icons/                 <- (optional)
+#
+#   # Override prompts (optional — defaults live in defaults/)
+#   prompts/
+#     system_prompt.md         <- deployment-specific identity
+#
+#   # Override/add skills (optional — only deployment-specific ones)
+#   prompts/skills/
+#     browser_navigate.md      <- app-specific routes
+#
+# Secrets go in .env files, managed manually per deployment.
+
+############################################
+# Frontend
+############################################
+
+app:
+  name: "My Assistant"
+  short_name: "Assistant"
+  theme_color: "#000000"
+
+auth:
+  # "google" or "microsoft"
+  provider: "google"
+  # Microsoft tenant (only used when provider is "microsoft")
+  tenant: ""
+
+deploy:
+  allowed_hosts:
+    - "localhost"
+  port: 3000
+
+############################################
+# Backend
+############################################
+
+backend:
+  port: 8080
+  base_path: "/api/v1"
+  model_name: "gemini-2.0-flash"
+
+  # Which tools are enabled for this deployment
+  tools:
+    - Search
+    - Brave_Search
+    - Execute_TypeScript
+    - Generate_Image
+    - List_Skill_Files
+    - Read_Skill_File
+    - Edit_Skill_File
+    - Browser_Navigate
+    - Browser_Alert
+    - Browser_Prompt
+    - Sandbox_Run
+
+  memory:
+    enabled: false
+    provider: "gemini"
+    falkordb_database: "my_memory"
+
+  skills:
+    enabled: true
+
+  # TypeScript runtime tools available to Execute_TypeScript
+  # Default: web, tavily, math
+  # Optional: graph (Microsoft Graph API - requires MS_TENANT_ID, MS_APP_ID, MS_SECRET env vars)
+  ts_runtime_tools:
+    - web
+    - tavily
+    - math

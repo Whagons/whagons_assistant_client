@@ -1,1 +1,9 @@
 backend/error_logger/error_logs.db
+config/
+web/.env
+web/.env.local
+backend/.env
+backend.env
+**/firebase_credentials.json
+node_modules/
+*.env.local

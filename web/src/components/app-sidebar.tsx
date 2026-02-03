@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Sidebar, SidebarContent } from "@/components/ui/sidebar";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import WhagonsLogo from "@/assets/WhagonsLogo";
+import logoSvg from "@/assets/logo.svg";
 import AvatarDropdown from "./avatar-dropdown";
 import { useChatContext } from "@/layout";
 import { MessageCache, ConversationCache } from "@/aichat/utils/memory_cache";
@@ -274,12 +274,7 @@ export function AppSidebar() {
       <Sidebar collapsible="offcanvas" side="left" variant="sidebar">
         <SidebarContent className="bg-sidebar flex flex-col h-screen">
           <div className="p-3 flex flex-col items-center">
-            <WhagonsLogo
-              fill="#535353"
-              darkFill="#d1d5db"
-              width={180}
-              height={50}
-            />
+            <img src={logoSvg} alt={import.meta.env.VITE_APP_NAME || 'Assistant'} className="h-[50px] w-auto" />
             <Link
               to="/chat/"
               className="rounded-md px-3 py-2 mt-5 text-sm font-medium w-full text-white gradient-button transition-colors block text-center"
