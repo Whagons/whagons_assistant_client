@@ -6,6 +6,7 @@ import { useIsMobile } from "./hooks/use-mobile";
 import { ModeToggle } from "./components/mode-toogle";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { ConversationCache } from "./aichat/utils/memory_cache";
+import { useAuth } from "./lib/auth-context";
 
 // Move interfaces outside the component
 interface Conversation {
@@ -51,11 +52,14 @@ const Layout = ({ children }: LayoutProps) => {
     setResetChatTrigger(prev => prev + 1);
   };
 
+  const { isSuperAdmin } = useAuth();
+
   // Determine current tab based on route
   const getCurrentTab = () => {
     const path = location.pathname;
     if (path.startsWith('/chat')) return 'chat';
     if (path.startsWith('/workflows')) return 'workflows';
+    if (path.startsWith('/admin')) return 'admin';
     return 'chat'; // default
   };
 
@@ -65,6 +69,8 @@ const Layout = ({ children }: LayoutProps) => {
       navigate('/chat/');
     } else if (value === 'workflows') {
       navigate('/workflows');
+    } else if (value === 'admin') {
+      navigate('/admin');
     }
   };
 
@@ -118,6 +124,11 @@ const Layout = ({ children }: LayoutProps) => {
                   <TabsTrigger value="workflows" className="text-sm font-medium h-9 px-5 leading-none rounded-full text-foreground/85 hover:bg-sidebar-accent/60 transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm">
                     Workflows
                   </TabsTrigger>
+                  {isSuperAdmin && (
+                    <TabsTrigger value="admin" className="text-sm font-medium h-9 px-5 leading-none rounded-full text-foreground/85 hover:bg-sidebar-accent/60 transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm">
+                      Admin
+                    </TabsTrigger>
+                  )}
                 </TabsList>
               </Tabs>
             </div>

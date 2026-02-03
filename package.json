@@ -4,7 +4,13 @@
   "type": "module",
   "scripts": {
     "apply-config": "node scripts/apply-config.mjs",
+    "use:whagons": "ln -sfn configs/whagons config && echo 'Switched to whagons config'",
+    "use:nca": "ln -sfn configs/nca config && echo 'Switched to nca config'",
+    "use:whagons5-widget": "ln -sfn configs/whagons5-widget config && echo 'Switched to whagons5-widget config'",
     "dev": "npm run apply-config && cd web && npm run dev",
+    "dev:whagons": "npm run use:whagons && npm run dev",
+    "dev:nca": "npm run use:nca && npm run dev",
+    "dev:whagons5-widget": "npm run use:whagons5-widget && npm run dev",
     "build": "npm run apply-config && cd web && npm run build"
   },
   "devDependencies": {

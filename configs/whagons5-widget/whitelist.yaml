@@ -1,0 +1,6 @@
+# Whagons5 Widget - Access controlled by Whagons5 app authentication
+# This whitelist is for any additional filtering if needed
+
+emails: []
+domains:
+  - "*"  # Allow all domains - auth handled by Whagons5

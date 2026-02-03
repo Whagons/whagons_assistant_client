@@ -1,7 +1,7 @@
-# NCA Assistant Frontend
-# Uses local config from configs/nca
+# Whagons5 Widget Frontend
+# Uses local config from configs/whagons5-widget
 #
-# In Coolify: set Dockerfile path to "web/nca.Dockerfile"
+# In Coolify: set Dockerfile path to "web/whagons5-widget.Dockerfile"
 
 # Stage 1: Build the frontend
 FROM node:20-slim AS builder
@@ -13,7 +13,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # Copy configs, scripts, defaults, and web
-COPY configs/nca ./config
+COPY configs/whagons5-widget ./config
 COPY scripts ./scripts
 COPY defaults ./defaults
 COPY web ./web

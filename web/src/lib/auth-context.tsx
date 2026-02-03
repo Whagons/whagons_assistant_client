@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 import { auth, onAuthStateChanged } from './firebase';
+import { HOST } from '@/aichat/utils/utils';
 
 interface AuthContextType {
   currentUser: User | null;
   loading: boolean;
   isWhitelisted: boolean;
+  isSuperAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,6 +28,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isWhitelisted, setIsWhitelisted] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -44,12 +47,28 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           // const whitelisted = !!idTokenResult.claims.whitelisted;
           // setIsWhitelisted(whitelisted);
           setIsWhitelisted(true);
+
+          // Check if user is a super admin
+          const token = await user.getIdToken();
+          const response = await fetch(`${HOST}/api/v1/admin/check`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setIsSuperAdmin(data.is_super_admin === true);
+          } else {
+            setIsSuperAdmin(false);
+          }
         } catch (error) {
           console.error("Error fetching user claims:", error);
           setIsWhitelisted(false);
+          setIsSuperAdmin(false);
         }
       } else {
         setIsWhitelisted(false);
+        setIsSuperAdmin(false);
       }
       
       setLoading(false);
@@ -62,6 +81,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     currentUser,
     loading,
     isWhitelisted,
+    isSuperAdmin,
   };
 
   return (

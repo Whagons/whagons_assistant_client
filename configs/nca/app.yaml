@@ -1,0 +1,47 @@
+app:
+  name: "NCA Assistant"
+  short_name: "NCA"
+  theme_color: "#000000"
+
+auth:
+  provider: "microsoft"
+  tenant: "novastone-ca.com"
+
+deploy:
+  allowed_hosts:
+    - "nca-assistant.gabrielmalek.com"
+    - "nca-assistant.development.gabrielmalek.com"
+  port: 3000
+
+backend:
+  port: 8000
+  base_path: "/api/v1"
+  model_name: "gemini-2.0-flash"
+
+  tools:
+    - Search
+    - Brave_Search
+    - Execute_TypeScript
+    - Generate_Image
+    - List_Skill_Files
+    - Read_Skill_File
+    - Edit_Skill_File
+    - Browser_Navigate
+    - Browser_Alert
+    - Browser_Prompt
+    - Sandbox_Run
+
+  memory:
+    enabled: false
+    provider: "gemini"
+    falkordb_database: "nca_memory"
+
+  skills:
+    enabled: true
+
+  # TypeScript runtime tools available to Execute_TypeScript
+  ts_runtime_tools:
+    - web
+    - tavily
+    - math
+    - graph

@@ -1,5 +1,6 @@
 backend/error_logger/error_logs.db
-config/
+# config/ is a symlink to active config in configs/
+config
 web/.env
 web/.env.local
 backend/.env

@@ -1,0 +1,8 @@
+# Whitelisted emails for access control
+# Add email addresses of users who should have access to the system
+# One email per line
+
+whitelisted_emails:
+  - malek.gabriel33@gmail.com
+
+

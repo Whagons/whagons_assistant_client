@@ -1,28 +1,19 @@
 # Whagons Assistant Frontend
-# Uses: Desarso/whagons_assistant_config
-#
-# Build args required:
-#   GH_TOKEN - GitHub token with repo read access
+# Uses local config from configs/whagons
 #
 # In Coolify: set Dockerfile path to "web/whagons.Dockerfile"
 
 # Stage 1: Build the frontend
 FROM node:20-slim AS builder
 
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
-
-# Clone Whagons config repo (private — needs GH_TOKEN)
-ARG GH_TOKEN
-RUN if [ -z "$GH_TOKEN" ]; then echo "ERROR: GH_TOKEN build arg is required" && exit 1; fi && \
-    git clone https://x-access-token:${GH_TOKEN}@github.com/Desarso/whagons_assistant_config.git config
 
 # Install root deps (yaml parser for apply-config)
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copy the rest
+# Copy configs, scripts, defaults, and web
+COPY configs/whagons ./config
 COPY scripts ./scripts
 COPY defaults ./defaults
 COPY web ./web

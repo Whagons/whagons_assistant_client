@@ -8,6 +8,7 @@ import { AuthProvider } from "./lib/auth-context";
 // Lazy load all components
 const ChatWindow = lazy(() => import("./aichat/pages/ChatWindow"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
 const Login = lazy(() => import("./pages/Login"));
 const RequestWhitelist = lazy(() => import("./pages/RequestWhitelist"));
 const Animation = lazy(() => import("./pages/Animation"));
@@ -66,6 +67,16 @@ function AppRoutes() {
           element={
             <PrivateRoute>
               <SettingsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <PrivateRoute>
+              <Layout>
+                <AdminPage />
+              </Layout>
             </PrivateRoute>
           }
         />
