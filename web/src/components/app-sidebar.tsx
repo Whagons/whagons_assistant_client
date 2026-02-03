@@ -4,16 +4,9 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import logoSvg from "@/assets/logo.svg";
 import AvatarDropdown from "./avatar-dropdown";
 import { useChatContext } from "@/layout";
-import { MessageCache, ConversationCache } from "@/aichat/utils/memory_cache";
+import { MessageCache, ConversationCache, Conversation } from "@/aichat/utils/memory_cache";
 import { HOST } from "@/aichat/utils/utils";
 import { authFetch } from "@/lib/utils";
-
-interface Conversation {
-  id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-}
 
 export function AppSidebar() {
   const { chats, setChats } = useChatContext();
@@ -79,27 +72,31 @@ export function AppSidebar() {
     [chats, pinnedChatIds]
   );
 
+  // Helper to get date from chat (fallback to updated_at if created_at is missing)
+  const getChatDate = (chat: { created_at?: string; updated_at: string }) => 
+    new Date(chat.created_at || chat.updated_at);
+
   // Group chats
   const groupedChats = useMemo(() => ({
-    today: nonPinnedChats.filter((chat) => new Date(chat.created_at) >= today),
+    today: nonPinnedChats.filter((chat) => getChatDate(chat) >= today),
     yesterday: nonPinnedChats.filter((chat) => {
-      const chatDate = new Date(chat.created_at);
+      const chatDate = getChatDate(chat);
       return chatDate >= yesterday && chatDate < today;
     }),
     lastWeek: nonPinnedChats.filter((chat) => {
-      const chatDate = new Date(chat.created_at);
+      const chatDate = getChatDate(chat);
       return chatDate >= lastWeek && chatDate < yesterday;
     }),
     lastMonth: nonPinnedChats.filter((chat) => {
-      const chatDate = new Date(chat.created_at);
+      const chatDate = getChatDate(chat);
       return chatDate >= lastMonth && chatDate < lastWeek;
     }),
     byMonth: nonPinnedChats.filter((chat) => {
-      const chatDate = new Date(chat.created_at);
+      const chatDate = getChatDate(chat);
       return chatDate.getFullYear() === currentYear && chatDate < lastMonth;
     }),
     byYear: nonPinnedChats.filter((chat) => {
-      const chatDate = new Date(chat.created_at);
+      const chatDate = getChatDate(chat);
       return chatDate.getFullYear() < currentYear;
     }),
   }), [nonPinnedChats, today, yesterday, lastWeek, lastMonth, currentYear]);
@@ -114,7 +111,7 @@ export function AppSidebar() {
   const monthlyGroups = useMemo(() => {
     return groupedChats.byMonth.reduce<Record<string, Conversation[]>>(
       (acc, chat) => {
-        const date = new Date(chat.created_at);
+        const date = getChatDate(chat);
         const month = date.toLocaleString("default", { month: "long" });
         if (!acc[month]) {
           acc[month] = [];
@@ -130,7 +127,7 @@ export function AppSidebar() {
   const yearlyGroups = useMemo(() => {
     return groupedChats.byYear.reduce<Record<number, Conversation[]>>(
       (acc, chat) => {
-        const year = new Date(chat.created_at).getFullYear();
+        const year = getChatDate(chat).getFullYear();
         if (!acc[year]) {
           acc[year] = [];
         }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ContentItem, ImageData, PdfData } from "../models/models";
 import WaveIcon from "./WaveIcon";
+import { ModelsCache } from "../utils/memory_cache";
 
 const HOST = import.meta.env.VITE_CHAT_HOST;
 
@@ -33,49 +34,31 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load models and current conversation model
-  const loadModelsAndConversation = async () => {
+  // Load models (using cache) and set selected model from localStorage
+  const loadModels = async () => {
     try {
-      const { authFetch } = await import("@/lib/utils");
-      // Fetch available models
-      const modelsResp = await authFetch(`${HOST}/api/v1/models`);
-      if (modelsResp.ok) {
-        const data = await modelsResp.json();
-        if (Array.isArray(data?.models)) {
-          setAvailableModels(data.models);
-        }
-      }
-      // Fetch current conversation model (verify returns conversation.model or user preferred)
-      if (props.conversationId) {
-        const convResp = await authFetch(`${HOST}/api/v1/chats/conversations/${props.conversationId}/verify`);
-        if (convResp.ok) {
-          const convData = await convResp.json();
-          const modelKey = convData?.model ?? convData?.conversation?.model;
-          if (typeof modelKey === 'string' && modelKey.length > 0) {
-            setSelectedModel(modelKey);
-          }
-        }
-      }
+      // Use cached models to prevent redundant API calls
+      const models = await ModelsCache.get();
+      setAvailableModels(models);
+      
       // Load from localStorage first, then default to first available
       const storedModel = localStorage.getItem("preferred_model");
-      if (storedModel && !selectedModel) {
+      if (storedModel) {
         setSelectedModel(storedModel);
-        console.log("[ChatInput] Loaded model from localStorage:", storedModel);
-      } else if (!selectedModel && availableModels.length > 0) {
-        const defaultModel = availableModels[0].id;
+      } else if (models.length > 0) {
+        const defaultModel = models[0].id;
         setSelectedModel(defaultModel);
         localStorage.setItem("preferred_model", defaultModel);
-        console.log("[ChatInput] Set default model:", defaultModel);
       }
     } catch (e) {
-      // ignore
+      console.error("[ChatInput] Error loading models:", e);
     }
   };
 
-  // Initialize models on mount
+  // Initialize models on mount only (not on conversationId change)
   useEffect(() => {
-    loadModelsAndConversation();
-  }, [props.conversationId]);
+    loadModels();
+  }, []);
 
   // Calculate if any uploads are in progress
   const isUploading = () => pendingUploads > 0;

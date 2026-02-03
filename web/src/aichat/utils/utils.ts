@@ -45,13 +45,9 @@ export function convertToChatMessages(messages: DBMessage[]): ChatMessage[] {
         if (part.text) {
           // Simple text part
           textContent += part.text;
-        } else if (part.function_call) {
-          // Tool call (for now, skip in simple rendering - can add later)
-          console.log("Skipping function_call in message rendering:", part.function_call);
-        } else if (part.function_response) {
-          // Tool result (for now, skip in simple rendering - can add later)
-          console.log("Skipping function_response in message rendering:", part.function_response);
         }
+        // function_call and function_response parts are intentionally skipped
+        // They are handled separately by ToolMessageRenderer
       }
       
       // Create the message if we have content
@@ -61,7 +57,7 @@ export function convertToChatMessages(messages: DBMessage[]): ChatMessage[] {
       
     } catch (e) {
       console.error(`Error processing DB message (ID: ${dbMessage.ID}):`, e);
-      console.error("Original Parts:", dbMessage.Parts);
+      console.error("Original PartsJSON:", dbMessage.PartsJSON);
     }
     return outputMessages; // Return whatever valid messages were parsed, or empty if parse failed
   });

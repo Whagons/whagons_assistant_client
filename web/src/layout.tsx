@@ -5,16 +5,8 @@ import { AppSidebar } from "./components/app-sidebar";
 import { useIsMobile } from "./hooks/use-mobile";
 import { ModeToggle } from "./components/mode-toogle";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { ConversationCache } from "./aichat/utils/memory_cache";
+import { ConversationCache, Conversation } from "./aichat/utils/memory_cache";
 import { useAuth } from "./lib/auth-context";
-
-// Move interfaces outside the component
-interface Conversation {
-  id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-}
 
 interface ChatContextType {
   chats: Conversation[];
@@ -74,18 +66,27 @@ const Layout = ({ children }: LayoutProps) => {
     }
   };
 
-  //on mount immediately load conversations from cache then fetch from server
+  //on mount load conversations from cache, then optionally refresh from server
   useEffect(() => {
     console.log("Layout mounted - starting to load conversations");
     const loadConversations = async () => {
       try {
-        const cachedChats = await ConversationCache.get();
-        console.log("Got cached chats:", cachedChats);
-        setChats(cachedChats);
+        // Check if we have cached conversations first
+        const hasCached = ConversationCache.has();
+        
+        // Get conversations (from cache or server if no cache)
+        const chats = await ConversationCache.get();
+        console.log("Got chats:", chats.length, "items, wasCached:", hasCached);
+        setChats(chats);
 
-        const freshChats = await ConversationCache.fetchConversationsNoCache();
-        console.log("Got fresh chats:", freshChats);
-        setChats(freshChats);
+        // Only do background refresh if we showed cached data
+        // (ConversationCache.get() already fetches from server if no cache)
+        if (hasCached) {
+          // Background refresh to check for updates
+          const freshChats = await ConversationCache.fetchConversationsNoCache();
+          console.log("Background refresh got:", freshChats.length, "items");
+          setChats(freshChats);
+        }
       } catch (error) {
         console.error("Failed to load conversations:", error);
       }

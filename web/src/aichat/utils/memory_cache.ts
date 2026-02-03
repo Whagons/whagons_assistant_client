@@ -838,3 +838,66 @@ export async function prefetchMessageHistory(id: string) {
   if (MessageCache.has(id)) return MessageCache.get(id);
   MessageCache.prefetchMessageHistory(id);
 }
+
+// Model config interface
+export interface ModelConfig {
+  id: string;
+  display_name: string;
+  provider: string;
+  description: string;
+  context_size?: number;
+  capabilities?: string[];
+}
+
+// Cache for models to prevent redundant API calls
+export class ModelsCache {
+  private static models: ModelConfig[] | null = null;
+  private static fetchPromise: Promise<ModelConfig[]> | null = null;
+  private static lastFetch: number = 0;
+  private static CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  public static async get(): Promise<ModelConfig[]> {
+    const now = Date.now();
+    
+    // Return cached if still valid
+    if (this.models && (now - this.lastFetch) < this.CACHE_TTL) {
+      return this.models;
+    }
+
+    // If a fetch is already in progress, wait for it
+    if (this.fetchPromise) {
+      return this.fetchPromise;
+    }
+
+    // Start new fetch
+    this.fetchPromise = this.fetchModels();
+    try {
+      const models = await this.fetchPromise;
+      this.models = models;
+      this.lastFetch = now;
+      return models;
+    } finally {
+      this.fetchPromise = null;
+    }
+  }
+
+  private static async fetchModels(): Promise<ModelConfig[]> {
+    try {
+      const { authFetch } = await import("@/lib/utils");
+      const response = await authFetch(`${HOST}/api/v1/models`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch models: ${response.statusText}`);
+      }
+      const data = await response.json();
+      return data.models || [];
+    } catch (error) {
+      console.error("Error fetching models:", error);
+      return this.models || []; // Return cached models on error
+    }
+  }
+
+  public static invalidate() {
+    this.models = null;
+    this.lastFetch = 0;
+  }
+}

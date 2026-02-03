@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { HOST } from "@/aichat/utils/utils";
-import { ModelConfig } from "@/aichat/models/api-types";
+import { ModelsCache, ModelConfig } from "@/aichat/utils/memory_cache";
 
 interface ModelSelectorProps {
   value?: string;
@@ -22,17 +21,13 @@ export function ModelSelector({ value, onChange, className }: ModelSelectorProps
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`${HOST}/api/v1/models`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch models: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      setModels(data.models || []);
+      // Use cached models to prevent redundant API calls
+      const cachedModels = await ModelsCache.get();
+      setModels(cachedModels);
       
       // If no value is set and we have models, set the first one as default
-      if (!value && data.models && data.models.length > 0) {
-        onChange(data.models[0].id);
+      if (!value && cachedModels.length > 0) {
+        onChange(cachedModels[0].id);
       }
     } catch (err) {
       console.error("Error fetching models:", err);
@@ -108,19 +103,23 @@ export function ModelSelector({ value, onChange, className }: ModelSelectorProps
                 <p className="text-xs text-muted-foreground">
                   Provider: <span className="font-medium">{selectedModel.provider}</span>
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Context: <span className="font-medium">{(selectedModel.context_size / 1000).toFixed(0)}k tokens</span>
-                </p>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {selectedModel.capabilities.map(cap => (
-                    <span 
-                      key={cap}
-                      className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded"
-                    >
-                      {cap}
-                    </span>
-                  ))}
-                </div>
+                {selectedModel.context_size && (
+                  <p className="text-xs text-muted-foreground">
+                    Context: <span className="font-medium">{(selectedModel.context_size / 1000).toFixed(0)}k tokens</span>
+                  </p>
+                )}
+                {selectedModel.capabilities && selectedModel.capabilities.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {selectedModel.capabilities.map(cap => (
+                      <span 
+                        key={cap}
+                        className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded"
+                      >
+                        {cap}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </>
             );
           })()}

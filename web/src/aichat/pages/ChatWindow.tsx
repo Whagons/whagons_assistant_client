@@ -48,6 +48,8 @@ function ChatWindow() {
   // Single multiplexed WebSocket via wsManager; per-conversation subscription only
   const unsubscribeWSRef = useRef<(() => void) | null>(null);
   const lastActivityAtRef = useRef(0);
+  // Track verified conversations to avoid redundant API calls
+  const verifiedConversationsRef = useRef<Set<string>>(new Set());
   const { chats, setChats } = useChatContext();
   const navigate = useNavigate();
   // Track scroll positions for each conversation
@@ -122,11 +124,17 @@ function ChatWindow() {
   }, []);
 
   // Verify conversation state only if it already exists server-side
+  // Uses a ref to track verified conversations and avoid redundant calls
   const verifyIfExists = useCallback(async (cid: string) => {
+    // Skip if already verified this session
+    if (verifiedConversationsRef.current.has(cid)) {
+      return;
+    }
     try {
       const { authFetch } = await import("@/lib/utils");
       const resp = await authFetch(`${HOST}/api/v1/chats/conversations/${cid}`);
       if (resp.ok) {
+        verifiedConversationsRef.current.add(cid);
         // TODO: Implement verifyAndSync in memory_cache.ts
         // import("../utils/memory_cache").then(({ DB }) => DB.verifyAndSync(cid));
       }
