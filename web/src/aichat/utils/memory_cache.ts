@@ -12,7 +12,7 @@ export interface Conversation {
 }
 
 // Current database version - increment when schema changes
-const CURRENT_DB_VERSION = "1.0.4";
+const CURRENT_DB_VERSION = "1.0.5";
 const DB_VERSION_KEY = "indexeddb_version";
 
 //static class to access the message cache
