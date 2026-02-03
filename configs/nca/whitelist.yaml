@@ -1,3 +1,13 @@
 # Whitelisted emails for access control
 whitelisted_emails:
   - malek.gabriel33@gmail.com
+  - gmalek@ncafinancial.com
+
+# Whitelisted domains - all emails from these domains are allowed
+whitelisted_domains:
+  - ncafinancial.com
+
+# Super admin emails
+super_admin_emails:
+  - malek.gabriel33@gmail.com
+  - gmalek@ncafinancial.com
