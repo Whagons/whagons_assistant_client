@@ -2,12 +2,15 @@
 whitelisted_emails:
   - malek.gabriel33@gmail.com
   - gmalek@ncafinancial.com
+  - gabriel.malek@novastone-ca.com
 
 # Whitelisted domains - all emails from these domains are allowed
 whitelisted_domains:
   - ncafinancial.com
+  - novastone-ca.com
 
 # Super admin emails
 super_admin_emails:
   - malek.gabriel33@gmail.com
   - gmalek@ncafinancial.com
+  - gabriel.malek@novastone-ca.com
