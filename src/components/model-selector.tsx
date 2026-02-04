@@ -82,12 +82,13 @@ export function ModelSelector({ value, onChange, className }: ModelSelectorProps
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+        className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all truncate"
+        style={{ textOverflow: 'ellipsis' }}
       >
         <option value="">Select a model</option>
         {models.map((model) => (
           <option key={model.id} value={model.id}>
-            {model.display_name} - {model.description}
+            {model.display_name}
           </option>
         ))}
       </select>

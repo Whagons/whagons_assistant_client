@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { authFetch } from "@/lib/utils";
 import { HOST } from "@/aichat/utils/utils";
 import { toast } from "sonner";
@@ -74,6 +75,8 @@ const StatusIcon = ({ status }: { status: string }) => {
 };
 
 export default function WorkflowsPage() {
+  const { id: workflowIdFromUrl } = useParams<{ id?: string }>();
+  const navigate = useNavigate();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -194,6 +197,17 @@ export default function WorkflowsPage() {
     }
   }, []);
 
+  // Handle URL param to select workflow
+  useEffect(() => {
+    if (workflowIdFromUrl && workflows.length > 0 && !selectedWorkflow) {
+      const workflow = workflows.find(w => w.id === workflowIdFromUrl);
+      if (workflow) {
+        setSelectedWorkflow(workflow);
+        connectToLogStream(workflow.id);
+      }
+    }
+  }, [workflowIdFromUrl, workflows, selectedWorkflow, connectToLogStream]);
+
   // Auto-refresh workflow list periodically
   useEffect(() => {
     const interval = setInterval(() => {
@@ -253,9 +267,11 @@ export default function WorkflowsPage() {
       setSelectedWorkflow(null);
       setLogs("");
       setIsStreaming(false);
+      navigate('/workflows', { replace: true });
       return;
     }
     setSelectedWorkflow(workflow);
+    navigate(`/workflows/${workflow.id}`, { replace: true });
     // Connect to SSE stream for real-time logs
     connectToLogStream(workflow.id);
   };
@@ -547,6 +563,7 @@ export default function WorkflowsPage() {
                     setSelectedWorkflow(null);
                     setLogs("");
                     setIsStreaming(false);
+                    navigate('/workflows', { replace: true });
                   }}
                   className="p-2 hover:bg-muted/30 rounded-lg transition-colors text-muted-foreground hover:text-foreground shrink-0 ml-2"
                 >

@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { ModelSelector } from "@/components/model-selector";
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [useLegacyToolViz, setUseLegacyToolViz] = useState<boolean>(false);
 
@@ -36,32 +39,31 @@ export default function SettingsPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
+      <button
+        onClick={() => navigate(-1)}
+        className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-4"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        <span>Back</span>
+      </button>
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
       
       <div className="space-y-8">
         {/* AI Model Section */}
         <div>
-          <h2 className="text-lg font-semibold mb-2">AI Model</h2>
+          <h2 className="text-lg font-semibold mb-2">Default Model</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Select the AI model to use for your conversations
+            Select the default AI model for new conversations
           </p>
           <ModelSelector 
             value={selectedModel} 
             onChange={handleModelChange}
             className="max-w-md"
           />
+          <p className="text-xs text-muted-foreground mt-2">
+            This will be used as the default when starting a new conversation
+          </p>
         </div>
-
-        {selectedModel && (
-          <div className="p-4 bg-muted rounded-lg">
-            <p className="text-sm">
-              <span className="font-medium">Current model:</span> {selectedModel}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              This preference is saved locally and will apply to new conversations
-            </p>
-          </div>
-        )}
 
         {/* Tool Visualization Section */}
         <div className="border-t pt-6">

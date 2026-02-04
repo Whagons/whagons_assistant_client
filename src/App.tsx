@@ -33,7 +33,7 @@ function AppRoutes() {
           }
         />
         <Route
-          path="/workflows"
+          path="/workflows/:id?"
           element={
             <PrivateRoute>
               <Layout>
