@@ -24,9 +24,19 @@ const isPdfData = (content: any): content is PdfData => {
   return typeof content === "object" && content !== null && "kind" in content && content.kind === "pdf-file";
 };
 
+// localStorage key for persisting input draft
+const INPUT_DRAFT_KEY = "chat_input_draft";
+
 const ChatInput: React.FC<ChatInputProps> = (props) => {
   const [content, setContent] = useState<ContentItem[]>([]);
-  const [textInput, setTextInput] = useState("");
+  // Initialize from localStorage if available
+  const [textInput, setTextInput] = useState(() => {
+    try {
+      return localStorage.getItem(INPUT_DRAFT_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
   const [isDragging, setIsDragging] = useState(false);
   const [pendingUploads, setPendingUploads] = useState(0);
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -87,6 +97,23 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
   useEffect(() => {
     loadModels();
   }, []);
+
+  // Save text input to localStorage (debounced to avoid excessive writes)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      try {
+        if (textInput) {
+          localStorage.setItem(INPUT_DRAFT_KEY, textInput);
+        } else {
+          localStorage.removeItem(INPUT_DRAFT_KEY);
+        }
+      } catch {
+        // Ignore localStorage errors
+      }
+    }, 300); // 300ms debounce
+    
+    return () => clearTimeout(timeoutId);
+  }, [textInput]);
 
   // Calculate if any uploads are in progress
   const isUploading = () => pendingUploads > 0;
@@ -291,6 +318,8 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
         props.onSubmit(submissionData);
         setContent([]);
         setTextInput("");
+        // Clear draft from localStorage
+        try { localStorage.removeItem(INPUT_DRAFT_KEY); } catch {}
         // Reset textarea height
         if (textInputRef.current) {
           textInputRef.current.style.height = '56px';
@@ -321,6 +350,8 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
         props.onSubmit(submissionData);
         setContent([]);
         setTextInput("");
+        // Clear draft from localStorage
+        try { localStorage.removeItem(INPUT_DRAFT_KEY); } catch {}
         // Reset textarea height
         if (textInputRef.current) {
           textInputRef.current.style.height = '56px';

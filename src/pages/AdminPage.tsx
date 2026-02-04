@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { authFetch } from "@/lib/utils";
 import { HOST } from "@/aichat/utils/utils";
+import { ModelsCache } from "@/aichat/utils/memory_cache";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -412,6 +413,9 @@ export default function AdminPage() {
         // Remove from order
         setFavoriteOrder(prev => prev.filter(id => id !== modelId));
       }
+
+      // Invalidate the shared models cache so other components get updated favorites
+      ModelsCache.invalidate();
 
       toast.success(newFavorite ? "Added to favorites" : "Removed from favorites");
     } catch (err) {

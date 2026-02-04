@@ -7,7 +7,10 @@
     "start": "vite",
     "dev": "vite",
     "build": "vite build",
-    "serve": "vite preview --host"
+    "serve": "vite preview --host",
+    "use:nca": "cp configs/nca/favicon.ico src/assets/favicon.ico && cp configs/nca/logo.svg src/assets/logo.svg && grep -v '^VITE_APP_NAME=' .env > .env.tmp && mv .env.tmp .env && echo 'VITE_APP_NAME=NCA Assistant' >> .env",
+    "use:whagons": "cp configs/whagons/favicon.ico src/assets/favicon.ico && cp configs/whagons/logo.svg src/assets/logo.svg && grep -v '^VITE_APP_NAME=' .env > .env.tmp && mv .env.tmp .env && echo 'VITE_APP_NAME=Whagons Assistant' >> .env",
+    "use:whagons5-widget": "cp configs/whagons5-widget/favicon.ico src/assets/favicon.ico && cp configs/whagons5-widget/logo.svg src/assets/logo.svg && grep -v '^VITE_APP_NAME=' .env > .env.tmp && mv .env.tmp .env && echo 'VITE_APP_NAME=Whagons Widget' >> .env"
   },
   "license": "MIT",
   "devDependencies": {
@@ -18,6 +21,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.2",
     "vite": "^6.0.0",
+    "vite-plugin-html": "^3.2.2",
     "vite-plugin-pwa": "^1.0.0"
   },
   "dependencies": {
@@ -36,6 +40,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.4",
+    "dayjs": "^1.11.19",
     "debug": "^4.3.7",
     "extend": "^3.0.2",
     "firebase": "^11.6.0",

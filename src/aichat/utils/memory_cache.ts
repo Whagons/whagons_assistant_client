@@ -12,7 +12,8 @@ export interface Conversation {
 }
 
 // Current database version - increment when schema changes
-const CURRENT_DB_VERSION = "1.0.5";
+// Bumped to 1.0.9 to add reasoning field support in message conversion
+const CURRENT_DB_VERSION = "1.0.9";
 const DB_VERSION_KEY = "indexeddb_version";
 
 //static class to access the message cache

@@ -1,13 +1,24 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from "@tailwindcss/vite"
 import { VitePWA } from 'vite-plugin-pwa';
+import { createHtmlPlugin } from 'vite-plugin-html';
 import path from 'path';
 
-export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(),
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  
+  return {
+    plugins: [
+      react(),
+      tailwindcss(),
+      createHtmlPlugin({
+        inject: {
+          data: {
+            VITE_APP_NAME: env.VITE_APP_NAME || 'Assistant',
+          },
+        },
+      }),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
@@ -99,4 +110,5 @@ export default defineConfig({
     host: process.env.VITE_CHAT_HOST_DEV,
     allowedHosts: (process.env.VITE_ALLOWED_HOSTS || '').split(',').filter(Boolean),
   }
+  };
 });

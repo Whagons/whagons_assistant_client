@@ -38,22 +38,64 @@ export function convertToChatMessages(messages: DBMessage[]): ChatMessage[] {
       // Handle Go backend format: [{text: "..."}, ...] or [{function_call: {...}}, ...]
       const role = dbMessage.Role === "user" ? "user" : "assistant";
       
-      // Accumulate text parts for assistant messages
+      // Collect different types of content separately
       let textContent = "";
+      let reasoningContent = "";
+      const toolCalls: ChatMessage[] = [];
+      const toolResults: ChatMessage[] = [];
       
       for (const part of parts) {
         if (part.text) {
           // Simple text part
           textContent += part.text;
         }
-        // function_call and function_response parts are intentionally skipped
-        // They are handled separately by ToolMessageRenderer
+        
+        // Handle reasoning content (chain-of-thought from models like Kimi K2.5, DeepSeek-R1)
+        if (part.reasoning) {
+          reasoningContent += part.reasoning;
+        }
+        
+        // Handle function_call (tool_call)
+        if (part.functionCall) {
+          console.log('[convertToChatMessages] Found functionCall:', part.functionCall.name, 'id:', part.functionCall.id);
+          toolCalls.push({
+            role: "tool_call",
+            content: {
+              tool_call_id: part.functionCall.id,
+              name: part.functionCall.name,
+              args: part.functionCall.args,
+            }
+          });
+        }
+        
+        // Handle function_response (tool_result)
+        if (part.function_response) {
+          console.log('[convertToChatMessages] Found function_response:', part.function_response.name, 'id:', part.function_response.id);
+          toolResults.push({
+            role: "tool_result",
+            content: {
+              tool_call_id: part.function_response.id,
+              name: part.function_response.name,
+              content: part.function_response.response?.result || part.function_response.response,
+            }
+          });
+        }
       }
       
-      // Create the message if we have content
-      if (textContent) {
-        outputMessages.push({ role, content: textContent });
+      // Output order matters for timeline grouping:
+      // 1. Text content FIRST (so it doesn't break tool_call/tool_result consecutive grouping)
+      // 2. Tool calls
+      // 3. Tool results
+      // This ensures tool_calls and tool_results stay consecutive across DB message boundaries
+      if (textContent || reasoningContent) {
+        const msg: ChatMessage = { role, content: textContent };
+        if (reasoningContent) {
+          msg.reasoning = reasoningContent;
+        }
+        outputMessages.push(msg);
       }
+      outputMessages.push(...toolCalls);
+      outputMessages.push(...toolResults);
       
     } catch (e) {
       console.error(`Error processing DB message (ID: ${dbMessage.ID}):`, e);

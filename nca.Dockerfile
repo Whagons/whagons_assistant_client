@@ -15,6 +15,11 @@ COPY configs/nca/app.yaml ./config/app.yaml
 COPY configs/nca/favicon.ico ./src/assets/favicon.ico
 COPY configs/nca/logo.svg ./src/assets/logo.svg
 
+# NCA-specific env vars for build
+ENV VITE_APP_NAME="NCA Assistant"
+ENV VITE_AUTH_PROVIDER="microsoft"
+ENV VITE_AUTH_TENANT="novastone-ca.com"
+
 # Build
 RUN npm run build
 

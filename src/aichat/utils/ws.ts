@@ -1,4 +1,5 @@
 export type EventHandler = (data: any) => void;
+export type CloseHandler = (sessionId: string, code: number, reason: string) => void;
 
 /**
  * WebSocket manager for per-session connections to the Go backend.
@@ -7,6 +8,7 @@ export type EventHandler = (data: any) => void;
 class SessionWSManager {
   private connections: Map<string, WebSocket> = new Map();
   private handlers: Map<string, Set<EventHandler>> = new Map();
+  private closeHandlers: Map<string, Set<CloseHandler>> = new Map();
   private urlBase: string;
   private reconnectTimers: Map<string, number> = new Map();
   private shouldReconnect: Map<string, boolean> = new Map();
@@ -109,6 +111,18 @@ class SessionWSManager {
       });
       this.connections.delete(sessionId);
       
+      // Notify close handlers (for UI cleanup like stopping loading state)
+      const closeListeners = this.closeHandlers.get(sessionId);
+      if (closeListeners && closeListeners.size > 0) {
+        for (const fn of closeListeners) {
+          try {
+            fn(sessionId, event.code, event.reason || '');
+          } catch (error) {
+            console.error('[WS] Close handler error:', error);
+          }
+        }
+      }
+      
       // Attempt reconnect if there are still active handlers and reconnect is enabled
       const hasHandlers = this.handlers.get(sessionId)?.size || 0 > 0;
       const shouldReconnect = this.shouldReconnect.get(sessionId);
@@ -192,6 +206,27 @@ class SessionWSManager {
   }
 
   /**
+   * Register a handler for WebSocket close events
+   */
+  onClose(sessionId: string, handler: CloseHandler): () => void {
+    if (!this.closeHandlers.has(sessionId)) {
+      this.closeHandlers.set(sessionId, new Set());
+    }
+    const set = this.closeHandlers.get(sessionId)!;
+    set.add(handler);
+
+    return () => {
+      const listeners = this.closeHandlers.get(sessionId);
+      if (listeners) {
+        listeners.delete(handler);
+        if (listeners.size === 0) {
+          this.closeHandlers.delete(sessionId);
+        }
+      }
+    };
+  }
+
+  /**
    * Send a message to a specific session's WebSocket
    */
   send(sessionId: string, data: any): boolean {
@@ -221,6 +256,7 @@ class SessionWSManager {
       this.connections.delete(sessionId);
     }
     this.handlers.delete(sessionId);
+    this.closeHandlers.delete(sessionId); // Clear close handlers
     this.sessionModels.delete(sessionId); // Clear stored model
     
     const timer = this.reconnectTimers.get(sessionId);

@@ -18,6 +18,8 @@ import ToolMessageRenderer, { ToolCallMap } from "../components/ToolMessageRende
 import NewChat from "../components/NewChat";
 import { processFrontendTool, isFrontendTool } from "../utils/frontend_tools";
 import { handleFrontendToolPromptMessage } from "../utils/frontend_tool_prompts";
+import { useExecutionTraces } from "../hooks/useExecutionTraces";
+import ExecutionTraceTimeline from "../components/ExecutionTraceTimeline";
 
 // Component to render user message content
 
@@ -61,6 +63,19 @@ function ChatWindow() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   // Reference to input container to position the floating button above it
   const inputContainerRef = useRef<HTMLDivElement>(null);
+
+  // Execution trace management (for real-time TypeScript execution visualization)
+  const { traces, handleTrace, clearTraces, hasActiveTraces, loadTracesFromAPI } = useExecutionTraces();
+  
+  // Toggle for legacy tool visualization vs trace-based
+  // Default to trace-based visualization (useLegacyToolViz = false)
+  // To enable legacy mode: localStorage.setItem('use_legacy_tool_viz', '1')
+  // To enable trace mode: localStorage.removeItem('use_legacy_tool_viz')
+  const [useLegacyToolViz] = useState<boolean>(() => {
+    const legacy = localStorage.getItem('use_legacy_tool_viz') === '1';
+    console.log('[ChatWindow] Tool visualization mode:', legacy ? 'LEGACY' : 'TRACE');
+    return legacy;
+  });
 
   // Memoize the messages to prevent unnecessary re-renders
   const memoizedMessages = useMemo(() => messages, [messages]);
@@ -182,13 +197,24 @@ function ChatWindow() {
       const messagesFromCache = await MessageCache.get(id);
       // Check if messages have valid content
       if (Array.isArray(messagesFromCache)) {
-        // Simple validation that won't unnecessarily modify the data
+        // Filter out invalid messages and empty assistant messages
         const validMessages = messagesFromCache.filter(
-          (msg) =>
-            msg &&
-            typeof msg === "object" &&
-            "role" in msg &&
-            msg.content !== undefined
+          (msg) => {
+            if (!msg || typeof msg !== "object" || !("role" in msg)) {
+              return false;
+            }
+            // Filter out empty assistant messages (these are leftover reasoning traces)
+            if (msg.role === "assistant") {
+              const content = msg.content;
+              const reasoning = (msg as any).reasoning;
+              // Keep if has actual text content OR meaningful reasoning
+              const hasContent = content !== undefined && content !== null && content !== "";
+              const hasReasoning = reasoning !== undefined && reasoning !== null && reasoning !== "";
+              return hasContent || hasReasoning;
+            }
+            // Keep all other message types
+            return msg.content !== undefined;
+          }
         );
 
         setMessages(validMessages);
@@ -268,6 +294,37 @@ function ChatWindow() {
     queueMicrotask(() => updateScrollBottomVisibility());
   }, [messages, updateScrollBottomVisibility]);
 
+  // Synthesize traces when loading a conversation (on mount or navigation)
+  // This runs once when messages are loaded and we're not in an active session
+  const synthesizedForConversationRef = useRef<string | null>(null);
+  
+  useEffect(() => {
+    // Reset synthesis tracking when conversation changes
+    if (conversationId !== synthesizedForConversationRef.current) {
+      synthesizedForConversationRef.current = null;
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
+    // Don't synthesize while actively getting a response (real-time traces handle this)
+    if (gettingResponse) return;
+    
+    // Don't synthesize if we already did for this conversation
+    if (synthesizedForConversationRef.current === conversationId) return;
+    
+    // Don't synthesize if not in timeline mode
+    if (useLegacyToolViz) return;
+    
+    // Need messages with tool calls
+    if (!conversationId || messages.length === 0) return;
+    const hasToolCalls = messages.some(m => m.role === 'tool_call');
+    if (!hasToolCalls) return;
+    
+    console.log('[Traces] Synthesizing traces for:', conversationId, 'messages:', messages.length);
+    synthesizedForConversationRef.current = conversationId;
+    loadTracesFromAPI(conversationId, messages);
+  }, [useLegacyToolViz, conversationId, messages, gettingResponse, loadTracesFromAPI]);
+
   //if ID changes normally from navigating to old conversation
   useEffect(() => {
     const handleIdChange = async () => {
@@ -277,6 +334,8 @@ function ChatWindow() {
           // Reset active state when switching chats
           setGettingResponse(false);
           setMessages([]);
+          // Clear traces from previous conversation
+          clearTraces();
           setConversationId(currentId);
           // Drop any existing subscription; do not auto-subscribe unless active
           if (unsubscribeWSRef.current) { 
@@ -286,7 +345,7 @@ function ChatWindow() {
           const startTime = performance.now(); 
 
           setLoading(true);
-          await fetchMessageHistory(currentId); 
+          await fetchMessageHistory(currentId);
           setLoading(false);
 
           const endTime = performance.now(); 
@@ -303,7 +362,7 @@ function ChatWindow() {
       }
     };
     handleIdChange();
-  }, [id, conversationId, fetchMessageHistory, instantScrollToBottom, verifyIfExists]);
+  }, [id, conversationId, fetchMessageHistory, instantScrollToBottom, verifyIfExists, clearTraces]);
 
   //if ID changes to undefined because new chat button clicked
   useEffect(() => {
@@ -324,6 +383,9 @@ function ChatWindow() {
   const handleSubmit = async (content: string | ContentItem[]) => {
     if (gettingResponse) return;
     setGettingResponse(true);
+    
+    // Clear execution traces from previous interaction
+    clearTraces();
 
     // If it's the first message in a new chat, update the URL and sidebar
     const isNewChat = !id;
@@ -409,6 +471,15 @@ function ChatWindow() {
       
       // Track activity
       lastActivityAtRef.current = Date.now();
+      
+      // Handle execution traces (for real-time tool execution visualization)
+      // These are UI-only and NOT stored in chat history
+      if (data.type === "execution_trace") {
+        console.log('[ChatWindow] Received trace:', data.status, data.label);
+        handleTrace(data);
+        debug('ws:trace', data.status, data.label);
+        return; // Don't process as chat message - traces are non-semantic
+      }
       
       // Handle frontend tool prompts (tool-specific messages, not chat content)
       if (data.type === "frontend_tool_prompt") {
@@ -503,6 +574,16 @@ function ChatWindow() {
           
           // Process each part
           for (const part of data.parts) {
+            // Handle reasoning content (chain-of-thought from models like Kimi K2.5)
+            if (part.reasoning && typeof part.reasoning === "string") {
+              const updated = { ...lastMessage } as Message;
+              const prevReasoning = typeof lastMessage.reasoning === "string" ? lastMessage.reasoning : "";
+              updated.reasoning = prevReasoning + part.reasoning;
+              currentMessageState[currentMessageState.length - 1] = updated;
+              lastMessage = updated;
+              debug('raw_reasoning', { addLen: part.reasoning.length, totalLen: updated.reasoning?.length || 0 });
+            }
+            
             if (part.text && typeof lastMessage.content === "string") {
               const updated = { ...lastMessage } as Message;
               updated.content = (lastMessage.content as string) + part.text;
@@ -612,12 +693,18 @@ function ChatWindow() {
     };
 
     // Subscribe to WebSocket events for this session
+    let unsubscribeCloseHandler: (() => void) | null = null;
+    
     const ensureSubscription = async () => {
       // Always close existing connection before creating new one (backend closes after each message)
       if (unsubscribeWSRef.current) {
         debug('ws:cleanup', 'Closing previous connection');
         try { unsubscribeWSRef.current(); } catch {}
         unsubscribeWSRef.current = null;
+      }
+      if (unsubscribeCloseHandler) {
+        try { unsubscribeCloseHandler(); } catch {}
+        unsubscribeCloseHandler = null;
       }
       
       // Force close any existing connection for this session
@@ -626,6 +713,13 @@ function ChatWindow() {
       // Get selected model from localStorage
       const selectedModel = localStorage.getItem("preferred_model") || undefined;
       debug('ws:subscribe', currentConversationId, 'model:', selectedModel);
+      
+      // Register close handler to stop loading state on unexpected disconnect
+      unsubscribeCloseHandler = wsManager.onClose(currentConversationId, (sessionId, code, reason) => {
+        debug('ws:closed', sessionId, code, reason);
+        // Stop loading state on any close (expected or unexpected)
+        setGettingResponse(false);
+      });
       
       // Create new subscription (will create new WebSocket connection)
       unsubscribeWSRef.current = await wsManager.subscribe(currentConversationId, handleWebSocketEvent, selectedModel);
@@ -770,29 +864,100 @@ function ChatWindow() {
                   >
                     {/* Inner div for message content centering and padding - REMOVED PADDING  md:max-w-[900px] mx-auto pt-20*/}
                     <div className="mx-auto flex w-full max-w-3xl flex-col px-4 pb-10 pt-safe-offset-10 ">
-                      {memoizedMessages.map((message, index) => (
-                        message.role === "user" || message.role === "assistant" ? (
-                          <MessageItem
-                            key={index}
-                            message={message}
-                            messages={memoizedMessages}
-                            isLast={index === memoizedMessages.length - 1}
-                            gettingResponse={
-                              gettingResponse &&
-                              index === memoizedMessages.length - 1
+                      {memoizedMessages.map((message, index) => {
+                        // User and assistant messages always render normally
+                        if (message.role === "user" || message.role === "assistant") {
+                          return (
+                            <MessageItem
+                              key={index}
+                              message={message}
+                              messages={memoizedMessages}
+                              isLast={index === memoizedMessages.length - 1}
+                              gettingResponse={
+                                gettingResponse &&
+                                index === memoizedMessages.length - 1
+                              }
+                              isLastUser={index === lastUserIndex}
+                            />
+                          );
+                        }
+                        
+                        // Tool messages: legacy mode shows the old widget
+                        if (useLegacyToolViz) {
+                          return (
+                            <ToolMessageRenderer
+                              key={index}
+                              message={message}
+                              messages={memoizedMessages}
+                              index={index}
+                              toolCallMap={toolCallMap}
+                            />
+                          );
+                        }
+                        
+                        // In trace/timeline mode: render timeline for consecutive tool_calls as a group
+                        // Skip tool_result messages (they're shown in the timeline)
+                        if (message.role === "tool_result") {
+                          return null;
+                        }
+                        
+                        // For tool_call: only render at the FIRST one in a consecutive group
+                        if (message.role === "tool_call" && typeof message.content === "object" && message.content !== null) {
+                          // Check if previous message was also a tool_call or tool_result - if so, skip
+                          const prevMessage = index > 0 ? memoizedMessages[index - 1] : null;
+                          if (prevMessage?.role === "tool_call" || prevMessage?.role === "tool_result") {
+                            return null; // Already rendered at the first tool_call in this group
+                          }
+                          
+                          // This is the first tool_call in a consecutive group
+                          // Collect all unique tool_call IDs in this group
+                          const groupToolCallIds = new Set<string>();
+                          for (let i = index; i < memoizedMessages.length; i++) {
+                            const msg = memoizedMessages[i];
+                            if (msg.role === "tool_call" && typeof msg.content === "object" && msg.content !== null) {
+                              const c = msg.content as any;
+                              if (c.tool_call_id) {
+                                groupToolCallIds.add(c.tool_call_id);
+                              }
+                            } else if (msg.role === "tool_result") {
+                              continue; // tool_results are part of the group
+                            } else {
+                              break; // Hit a non-tool message, stop
                             }
-                            isLastUser={index === lastUserIndex}
-                          />
-                        ) : (
-                          <ToolMessageRenderer
-                            key={index}
-                            message={message}
-                            messages={memoizedMessages}
-                            index={index}
-                            toolCallMap={toolCallMap}
-                          />
-                        )
-                      ))}
+                          }
+                          
+                          // Build traces for this group
+                          const groupTraces = new Map<string, typeof traces extends Map<string, infer V> ? V : never>();
+                          for (const toolCallId of groupToolCallIds) {
+                            if (traces.has(toolCallId)) {
+                              groupTraces.set(toolCallId, traces.get(toolCallId)!);
+                            }
+                          }
+                          
+                          if (groupTraces.size > 0) {
+                            return (
+                              <div key={index} className="pt-3 pl-3 pr-3">
+                                <ExecutionTraceTimeline 
+                                  traces={groupTraces} 
+                                  isExpanded={hasActiveTraces()}
+                                />
+                              </div>
+                            );
+                          }
+                          
+                          // Fallback if no traces
+                          const content = message.content as any;
+                          const toolName = content.name || 'Tool';
+                          return (
+                            <div key={index} className="pt-3 pl-5 pr-3 text-sm text-muted-foreground flex items-center gap-2">
+                              <span className="inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                              <span>{toolName}</span>
+                            </div>
+                          );
+                        }
+                        
+                        return null;
+                      })}
                       {gettingResponse &&
                         memoizedMessages.length > 0 &&
                         memoizedMessages[memoizedMessages.length - 1].role === "user" && (
