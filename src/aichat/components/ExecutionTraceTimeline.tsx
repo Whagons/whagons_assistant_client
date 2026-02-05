@@ -233,7 +233,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
             {/* Line connects from first dot center to last dot center */}
             {visibleOps.length > 1 && (
               <div 
-                className="absolute left-[4px] w-0.5 bg-zinc-500 origin-top transition-all duration-300 ease-out" 
+                className="absolute left-[4px] w-0.5 bg-zinc-400 dark:bg-zinc-600 origin-top transition-all duration-300 ease-out" 
                 style={{
                   top: '20px', // Center of first dot (py-2 = 8px + half of dot 5px + some offset)
                   bottom: '20px', // Center of last dot
@@ -398,10 +398,12 @@ function OperationItem({ operation, isShimmering, isFading, isNew }: OperationIt
         }
       `}</style>
       
-      {/* Timeline dot - orange for error, zinc for all others */}
+      {/* Timeline dot - orange for error, lighter/darker for active vs done */}
       <div className="absolute -left-5 top-1/2 -translate-y-1/2">
         <span className={`block rounded-full w-2.5 h-2.5 ${
-          isError ? 'bg-orange-500' : 'bg-zinc-500'
+          isError ? 'bg-orange-500' : 
+          isActive ? 'bg-zinc-300 dark:bg-zinc-300' : 
+          'bg-zinc-400 dark:bg-zinc-600'
         } ${isNew ? 'animate-dot-emerge' : ''}`} />
       </div>
 
