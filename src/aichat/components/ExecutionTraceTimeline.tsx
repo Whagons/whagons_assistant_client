@@ -214,14 +214,14 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
             <div className="space-y-0">
               {visibleOps.map((op, index) => {
                 const isFirstAndFading = index === 0 && operations.length > MAX_VISIBLE_ITEMS;
-                // Only shimmer the last active operation
-                const isLastActive = index === visibleOps.length - 1 && op.status === 'active';
+                // Shimmer only the LAST item if it's active (the currently running one)
+                const isLastAndActive = index === visibleOps.length - 1 && op.status === 'active';
                 
                 return (
                   <OperationItem 
                     key={op.id} 
                     operation={op} 
-                    isShimmering={isLastActive}
+                    isShimmering={isLastAndActive}
                     isFading={isFirstAndFading}
                   />
                 );
@@ -314,20 +314,48 @@ function OperationItem({ operation, isShimmering, isFading }: OperationItemProps
         ${isFading ? 'opacity-30' : 'opacity-100'}
       `}
     >
-      {/* Timeline dot - zinc for normal, red/orange for error */}
+      {/* Timeline dot - green+pulse for active, orange for error, zinc for done */}
       <div className="absolute -left-5 top-1/2 -translate-y-1/2">
-        <span className={`block rounded-full w-2.5 h-2.5 ${isError ? 'bg-orange-500' : 'bg-zinc-500'}`} />
+        <span className={`block rounded-full w-2.5 h-2.5 ${
+          isError ? 'bg-orange-500' : 
+          isActive ? 'bg-green-500 animate-pulse' : 
+          'bg-zinc-500'
+        }`} />
       </div>
 
-      {/* Label with optional shimmer, muted for errors */}
-      <span 
-        className={`
-          flex-1 min-w-0 truncate
-          ${isError ? 'text-orange-600 dark:text-orange-400' : isShimmering ? 'shimmer-loading' : 'text-muted-foreground'}
-        `}
-      >
-        {displayLabel}
-      </span>
+      {/* Label with shimmer for active, muted for done, orange for errors */}
+      {isShimmering ? (
+        <>
+          <style>{`
+            @keyframes shimmer-sweep {
+              0% { background-position: -150% 0; }
+              100% { background-position: 150% 0; }
+            }
+          `}</style>
+          <span 
+            className="flex-1 min-w-0 truncate"
+            style={{
+              color: 'rgba(255, 255, 255, 0.1)',
+              background: 'linear-gradient(90deg, transparent 20%, rgba(255, 255, 255, 0.8) 50%, transparent 80%)',
+              backgroundSize: '150% 100%',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              animation: 'shimmer-sweep 0.8s linear infinite',
+            }}
+          >
+            {displayLabel}
+          </span>
+        </>
+      ) : (
+        <span 
+          className={`
+            flex-1 min-w-0 truncate
+            ${isError ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}
+          `}
+        >
+          {displayLabel}
+        </span>
+      )}
 
       {/* Duration */}
       {operation.duration_ms !== undefined && operation.duration_ms > 0 && (
