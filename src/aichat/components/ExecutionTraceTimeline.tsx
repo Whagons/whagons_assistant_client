@@ -135,8 +135,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
   const visibleOps = operations.slice(-MAX_VISIBLE_ITEMS);
   const hiddenCount = Math.max(0, operations.length - MAX_VISIBLE_ITEMS);
   
-  // Find the last active operation for shimmer effect
-  const lastActiveIndex = visibleOps.findLastIndex(op => op.status === 'active');
+
 
   // Count for header
   const completedCount = operations.filter(op => op.status === 'end').length;
@@ -211,13 +210,12 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
             <div className="space-y-0">
               {visibleOps.map((op, index) => {
                 const isFirstAndFading = index === 0 && operations.length > MAX_VISIBLE_ITEMS;
-                const isLastActive = index === lastActiveIndex;
                 
                 return (
                   <OperationItem 
                     key={op.id} 
                     operation={op} 
-                    isShimmering={isLastActive && op.status === 'active'}
+                    isShimmering={op.status === 'active'}
                     isFading={isFirstAndFading}
                   />
                 );
