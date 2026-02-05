@@ -22,6 +22,7 @@ import { useExecutionTraces } from "../hooks/useExecutionTraces";
 import ExecutionTraceTimeline from "../components/ExecutionTraceTimeline";
 import ConfirmationDialog from "../components/ConfirmationDialog";
 import HistoryWarningBanner from "../components/HistoryWarningBanner";
+import { useTheme } from "@/lib/theme-provider";
 
 // Component to render user message content
 
@@ -1056,24 +1057,9 @@ function ChatWindow() {
                           
                           return (
                             <div key={index} className="pt-3 pl-5 pr-3 text-sm flex items-center gap-2">
-                              <span className={`inline-flex rounded-full h-2 w-2 ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-zinc-500'}`}></span>
+                              <span className={`inline-flex rounded-full h-2 w-2 ${isRunning ? 'bg-zinc-600 dark:bg-zinc-300' : 'bg-zinc-400 dark:bg-zinc-500'}`}></span>
                               {isRunning ? (
-                                <>
-                                  <style>{`
-                                    @keyframes shimmer-sweep {
-                                      0% { background-position: -150% 0; }
-                                      100% { background-position: 150% 0; }
-                                    }
-                                  `}</style>
-                                  <span style={{
-                                    color: 'rgba(255, 255, 255, 0.1)',
-                                    background: 'linear-gradient(90deg, transparent 20%, rgba(255, 255, 255, 0.8) 50%, transparent 80%)',
-                                    backgroundSize: '150% 100%',
-                                    WebkitBackgroundClip: 'text',
-                                    backgroundClip: 'text',
-                                    animation: 'shimmer-sweep 0.8s linear infinite',
-                                  }}>{toolName}</span>
-                                </>
+                                <FallbackShimmerText text={toolName} />
                               ) : (
                                 <span className="text-muted-foreground">{toolName}</span>
                               )}
@@ -1348,6 +1334,36 @@ function DebugTracesPanel() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Shimmer text for fallback tool display (when no traces available)
+ */
+function FallbackShimmerText({ text }: { text: string }) {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  
+  const baseColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+  const shimmerColor = isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)';
+  
+  return (
+    <>
+      <style>{`
+        @keyframes shimmer-sweep {
+          0% { background-position: -150% 0; }
+          100% { background-position: 150% 0; }
+        }
+      `}</style>
+      <span style={{
+        color: baseColor,
+        background: `linear-gradient(90deg, transparent 20%, ${shimmerColor} 50%, transparent 80%)`,
+        backgroundSize: '150% 100%',
+        WebkitBackgroundClip: 'text',
+        backgroundClip: 'text',
+        animation: 'shimmer-sweep 0.8s linear infinite',
+      }}>{text}</span>
+    </>
   );
 }
 

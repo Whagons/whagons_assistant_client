@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { ExecutionTrace, ToolCallTraces } from '../models/traces';
+import { useTheme } from '@/lib/theme-provider';
 
 const MAX_VISIBLE_ITEMS = 5;
 
@@ -233,7 +234,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
             {/* Line connects from first dot center to last dot center */}
             {visibleOps.length > 1 && (
               <div 
-                className="absolute left-[4px] w-0.5 bg-zinc-400 dark:bg-zinc-600 origin-top transition-all duration-300 ease-out" 
+                className="absolute left-[4px] w-0.5 bg-zinc-400 dark:bg-zinc-500 origin-top transition-all duration-300 ease-out" 
                 style={{
                   top: '20px', // Center of first dot (py-2 = 8px + half of dot 5px + some offset)
                   bottom: '20px', // Center of last dot
@@ -398,33 +399,21 @@ function OperationItem({ operation, isShimmering, isFading, isNew }: OperationIt
         }
       `}</style>
       
-      {/* Timeline dot - orange for error, lighter/darker for active vs done */}
+      {/* Timeline dot - orange for error, active stands out more (darker in light, lighter in dark) */}
       <div className="absolute -left-5 top-1/2 -translate-y-1/2">
         <span className={`block rounded-full w-2.5 h-2.5 ${
           isError ? 'bg-orange-500' : 
-          isActive ? 'bg-zinc-300 dark:bg-zinc-300' : 
-          'bg-zinc-400 dark:bg-zinc-600'
+          isActive ? 'bg-zinc-600 dark:bg-zinc-300' : 
+          'bg-zinc-400 dark:bg-zinc-500'
         } ${isNew ? 'animate-dot-emerge' : ''}`} />
       </div>
 
       {/* Label with shimmer for active, muted for done, orange for errors */}
       {isShimmering ? (
-        <span 
-          className={`flex-1 min-w-0 truncate ${isNew ? 'animate-text-emerge' : ''}`}
-          style={{
-            color: 'rgba(255, 255, 255, 0.1)',
-            background: 'linear-gradient(90deg, transparent 20%, rgba(255, 255, 255, 0.8) 50%, transparent 80%)',
-            backgroundSize: '150% 100%',
-            WebkitBackgroundClip: 'text',
-            backgroundClip: 'text',
-            animation: isNew 
-              ? 'text-emerge 0.4s ease-out 0.15s forwards, shimmer-sweep 0.8s linear 0.55s infinite'
-              : 'shimmer-sweep 0.8s linear infinite',
-            opacity: isNew ? 0 : undefined,
-          }}
-        >
-          {displayLabel}
-        </span>
+        <ShimmerText 
+          text={displayLabel} 
+          isNew={isNew} 
+        />
       ) : (
         <span 
           className={`
@@ -446,6 +435,38 @@ function OperationItem({ operation, isShimmering, isFading, isNew }: OperationIt
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * Shimmer text component that handles dark/light mode
+ */
+function ShimmerText({ text, isNew }: { text: string; isNew?: boolean }) {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  
+  // Dark mode: white shimmer on dark background
+  // Light mode: dark shimmer on light background
+  const baseColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+  const shimmerColor = isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)';
+  
+  return (
+    <span 
+      className={`flex-1 min-w-0 truncate ${isNew ? 'animate-text-emerge' : ''}`}
+      style={{
+        color: baseColor,
+        background: `linear-gradient(90deg, transparent 20%, ${shimmerColor} 50%, transparent 80%)`,
+        backgroundSize: '150% 100%',
+        WebkitBackgroundClip: 'text',
+        backgroundClip: 'text',
+        animation: isNew 
+          ? 'text-emerge 0.4s ease-out 0.15s forwards, shimmer-sweep 0.8s linear 0.55s infinite'
+          : 'shimmer-sweep 0.8s linear infinite',
+        opacity: isNew ? 0 : undefined,
+      }}
+    >
+      {text}
+    </span>
   );
 }
 
