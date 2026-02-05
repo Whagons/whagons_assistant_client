@@ -42,8 +42,11 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
     const ops: OperationDisplay[] = [];
     const seenLabels = new Set<string>();
     
+    console.log('[Timeline] Building operations from traces:', traces.size, 'tool calls');
+    
     traces.forEach((toolCallTraces, toolCallId) => {
       const traceList = [...toolCallTraces.traces].sort((a, b) => a.timestamp - b.timestamp);
+      console.log('[Timeline] Tool call', toolCallId, 'has', traceList.length, 'traces:', traceList.map(t => `${t.status}:${t.label}`));
       
       // Map trace_id to its start trace
       const startTraces = new Map<string, ExecutionTrace>();
@@ -124,6 +127,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
     });
     
     // Sort by timestamp
+    console.log('[Timeline] Final operations:', ops.length, ops.map(o => `${o.status}:${o.startLabel}`));
     return ops.sort((a, b) => a.timestamp - b.timestamp);
   }, [traces]);
 
