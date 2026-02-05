@@ -192,24 +192,33 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
-        <span className="font-medium text-muted-foreground">
+        <span className="font-medium text-muted-foreground flex items-center gap-1.5">
           {hasActiveTraces ? (
-            <span>
-              {activeCount > 0 && `${activeCount} running`}
-              {activeCount > 0 && (completedCount > 0 || errorCount > 0) && ', '}
-              {completedCount > 0 && `${completedCount} done`}
-              {completedCount > 0 && errorCount > 0 && ', '}
-              {errorCount > 0 && <span className="text-orange-600 dark:text-orange-400">{errorCount} failed</span>}
-            </span>
+            <>
+              <span>
+                {activeCount > 0 && `${activeCount} running`}
+                {activeCount > 0 && completedCount > 0 && ', '}
+                {completedCount > 0 && `${completedCount} done`}
+              </span>
+              {errorCount > 0 && (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-red-500">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+              )}
+            </>
           ) : (
-            <span>
-              {totalCount > 0 ? (
-                <>
-                  {completedCount + errorCount} operation{(completedCount + errorCount) !== 1 ? 's' : ''}
-                  {errorCount > 0 && <span className="text-orange-600 dark:text-orange-400"> ({errorCount} failed)</span>}
-                </>
-              ) : 'No operations'}
-            </span>
+            <>
+              <span>
+                {totalCount > 0 ? (
+                  `${totalCount} operation${totalCount !== 1 ? 's' : ''}`
+                ) : 'No operations'}
+              </span>
+              {errorCount > 0 && (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-red-500">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+              )}
+            </>
           )}
         </span>
       </button>
@@ -347,7 +356,8 @@ function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTrac
     <div 
       className={`
         relative flex items-center gap-2 text-sm py-2
-        ${isFading ? 'opacity-30' : 'opacity-100'}
+        transition-all duration-300 ease-out
+        ${isFading ? 'opacity-30 -translate-y-2' : 'opacity-100 translate-y-0'}
         ${isNew ? 'animate-trace-appear' : ''}
       `}
     >
@@ -359,7 +369,7 @@ function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTrac
         @keyframes trace-appear {
           0% {
             opacity: 0;
-            transform: translateY(-20px);
+            transform: translateY(20px);
           }
           100% {
             opacity: 1;
@@ -368,14 +378,14 @@ function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTrac
         }
         @keyframes dot-emerge {
           0% {
-            transform: scale(0) translateY(-10px);
+            transform: scale(0);
             opacity: 0;
           }
           50% {
-            transform: scale(1.2) translateY(0);
+            transform: scale(1.3);
           }
           100% {
-            transform: scale(1) translateY(0);
+            transform: scale(1);
             opacity: 1;
           }
         }
