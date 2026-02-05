@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from "react";
+import { LoadingWidget } from "@/components/ui/loading-widget";
 
 interface TableRow {
   cells: string[];
@@ -316,11 +317,12 @@ const TableRenderer: React.FC<TableRendererProps> = (props) => {
 
       {props.isStreaming && !tableData.isComplete && (
         <div className="text-sm text-gray-500 dark:text-gray-400 mt-3 flex items-center justify-center">
-          <span className="loading-dots">
-            <span></span>
-            <span></span>
-            <span></span>
-          </span>
+          <LoadingWidget
+            size={32}
+            strokeWidthRatio={8}
+            color="currentColor"
+            cycleDuration={0.9}
+          />
           <span className="ml-2">Building table...</span>
         </div>
       )}

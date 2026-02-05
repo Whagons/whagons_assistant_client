@@ -177,22 +177,37 @@ export class DB {
   }
 
   public static async verifyAndSync(conversationId: string) {
+    console.log(`[verifyAndSync] Starting for ${conversationId}`);
     try {
       const { authFetch } = await import("@/lib/utils");
       const url = new URL(`${HOST}/api/v1/chats/conversations/${conversationId}/verify`);
-      const response = await authFetch(url.toString(), { method: "GET" });
-      if (!response.ok) return;
+      // Add cache-busting param to avoid browser caching
+      url.searchParams.set('_t', Date.now().toString());
+      console.log(`[verifyAndSync] Fetching: ${url.toString()}`);
+      const response = await authFetch(url.toString(), { method: "GET", cache: "no-store" });
+      console.log(`[verifyAndSync] Response status: ${response.status}`);
+      if (!response.ok) {
+        console.log(`[verifyAndSync] Response not ok, returning`);
+        return;
+      }
       const data = await response.json();
+      console.log(`[verifyAndSync] Server data:`, data);
 
-      // Fetch cached messages for comparison
-      const cached = await DB.getMessageHistory(conversationId);
-      const cachedCount = Array.isArray(cached) ? cached.length : 0;
-
-      // If counts differ or timestamps differ, refresh from server and update caches
-      const shouldRefresh = cachedCount !== data.message_count;
+      // Compare raw message count from server with what we stored
+      const rawCountKey = `messages-raw-count-${conversationId}`;
+      const storedRawCount = sessionStorage.getItem(rawCountKey);
+      const serverCount = data.message_count;
+      const cachedRawCount = storedRawCount ? parseInt(storedRawCount, 10) : -1; // -1 means no cache
+      
+      // Refresh if counts don't match (or no cached count exists)
+      const shouldRefresh = cachedRawCount !== serverCount;
+      
+      console.log(`[verifyAndSync] cachedRawCount: ${cachedRawCount}, serverCount: ${serverCount}, shouldRefresh: ${shouldRefresh}`);
 
       if (shouldRefresh) {
-        await MessageCache.refreshFromServer(conversationId);
+        console.log(`[verifyAndSync] Message count mismatch! Invalidating cache...`);
+        // Use invalidate which clears caches AND notifies listeners (triggering UI refetch)
+        MessageCache.invalidate(conversationId);
       }
 
       // Sync conversation updated_at in caches if changed
@@ -413,6 +428,7 @@ export class MessageCache {
   public static invalidate(conversationId: string) {
     // Remove from sessionStorage
     sessionStorage.removeItem(`messages-${conversationId}`);
+    sessionStorage.removeItem(`messages-raw-count-${conversationId}`);
     
     // Remove from IndexedDB
     DB.deleteMessageHistory(conversationId).catch(error => {
@@ -422,7 +438,7 @@ export class MessageCache {
     // Notify listeners
     MessageCache.notifyInvalidation(conversationId);
     
-    console.log(`Invalidated cached messages for conversation ${conversationId}`);
+    console.log(`[MessageCache.invalidate] Cleared cache for ${conversationId}`);
   }
 
   //fetches message history and returns it also sets cache
@@ -445,11 +461,14 @@ export class MessageCache {
       }
 
       const data = await response.json();
-      const chatMessages = convertToChatMessages(data.messages);
+      const rawMessages = data.messages || [];
+      const chatMessages = convertToChatMessages(rawMessages);
 
-      // Store in cache
+      // Store in cache along with raw count for sync verification
       if (response.status === 200) {
         MessageCache.set(id, chatMessages);
+        // Store raw message count so verifyAndSync can compare accurately
+        sessionStorage.setItem(`messages-raw-count-${id}`, rawMessages.length.toString());
       }
       return chatMessages;
     } catch (error) {

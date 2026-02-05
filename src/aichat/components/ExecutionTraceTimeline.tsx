@@ -1,8 +1,35 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ExecutionTrace, ToolCallTraces } from '../models/traces';
 import { useTheme } from '@/lib/theme-provider';
+import { LoadingWidget } from '@/components/ui/loading-widget';
 
 const MAX_VISIBLE_ITEMS = 5;
+
+// Rotating status words for active traces
+const STATUS_WORDS = ['pondering', 'thinking', 'calculating', 'processing'];
+const STATUS_ROTATION_MS = 2000; // Rotate every 2 seconds
+
+/**
+ * Hook to cycle through status words at a fixed interval
+ */
+function useRotatingStatus(isActive: boolean): string {
+  const [index, setIndex] = useState(0);
+  
+  useEffect(() => {
+    if (!isActive) {
+      setIndex(0);
+      return;
+    }
+    
+    const interval = setInterval(() => {
+      setIndex(prev => (prev + 1) % STATUS_WORDS.length);
+    }, STATUS_ROTATION_MS);
+    
+    return () => clearInterval(interval);
+  }, [isActive]);
+  
+  return STATUS_WORDS[index];
+}
 
 interface ExecutionTraceTimelineProps {
   traces: Map<string, ToolCallTraces>;
@@ -38,6 +65,9 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
     return false;
   }, [traces]);
 
+  // Get rotating status word for header (cycles every 2s, independent of trace frequency)
+  const statusWord = useRotatingStatus(hasActiveTraces);
+
   // Auto-expand when active, keep user's choice when done
   useEffect(() => {
     if (hasActiveTraces) {
@@ -52,11 +82,8 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
     const ops: OperationDisplay[] = [];
     const seenLabels = new Set<string>();
     
-    console.log('[Timeline] Building operations from traces:', traces.size, 'tool calls');
-    
     traces.forEach((toolCallTraces, toolCallId) => {
       const traceList = [...toolCallTraces.traces].sort((a, b) => a.timestamp - b.timestamp);
-      console.log('[Timeline] Tool call', toolCallId, 'has', traceList.length, 'traces:', traceList.map(t => `${t.status}:${t.label}`));
       
       // Map trace_id to its start trace
       const startTraces = new Map<string, ExecutionTrace>();
@@ -137,7 +164,6 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
     });
     
     // Sort by timestamp
-    console.log('[Timeline] Final operations:', ops.length, ops.map(o => `${o.status}:${o.startLabel}`));
     return ops.sort((a, b) => a.timestamp - b.timestamp);
   }, [traces]);
 
@@ -247,16 +273,16 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
         <span className="font-medium text-muted-foreground flex items-center gap-1.5">
           {hasActiveTraces ? (
             <>
-              <span>
-                {activeCount > 0 && `${activeCount} running`}
-                {activeCount > 0 && completedCount > 0 && ', '}
-                {completedCount > 0 && `${completedCount} done`}
+              {/* Smooth loading animation + rotating status word (fixed 2s interval) */}
+              <span className="relative w-6 h-5 flex items-center justify-center">
+                <LoadingWidget 
+                  size={30}
+                  strokeWidthRatio={8}
+                  color="currentColor"
+                  cycleDuration={0.9}
+                />
               </span>
-              {errorCount > 0 && (
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-red-500">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                </svg>
-              )}
+              <span className="transition-opacity duration-300">{statusWord}...</span>
             </>
           ) : (
             <>
@@ -277,7 +303,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
 
       {/* Expanded timeline with animations */}
       {isExpanded && (
-        <div className="mt-2 ml-6 relative overflow-hidden">
+        <div className="mt-2 ml-7.5 relative overflow-hidden">
           {/* Fade gradient at top when there are hidden items */}
           {hiddenCount > 0 && (
             <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none" />
@@ -304,6 +330,10 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
                 // Shimmer only the LAST item if it's active (the currently running one)
                 const isLastAndActive = index === visibleOps.length - 1 && op.status === 'active';
                 const isNew = newOperationIds.has(op.id);
+                const isLast = index === visibleOps.length - 1;
+                // Check if next item is new (so this item should animate line down to it)
+                const nextOp = visibleOps[index + 1];
+                const hasNewNextItem = nextOp && newOperationIds.has(nextOp.id);
                 
                 return (
                   <OperationItem 
@@ -314,7 +344,8 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
                     isFading={isFirstAndFading}
                     isNew={isNew}
                     hasActiveTraces={hasActiveTraces}
-                    isFirst={index === 0}
+                    isLast={isLast}
+                    hasNewNextItem={hasNewNextItem}
                   />
                 );
               })}
@@ -345,7 +376,8 @@ interface OperationItemProps {
   isNew?: boolean;
   hasActiveTraces?: boolean;
   isSlidingOut?: boolean;
-  isFirst?: boolean;
+  isLast?: boolean;
+  hasNewNextItem?: boolean;
 }
 
 /**
@@ -387,7 +419,7 @@ function toTriedLabel(label: string): string {
 /**
  * Single operation in the timeline with animation support
  */
-function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTraces, isSlidingOut, isFirst }: OperationItemProps) {
+function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTraces, isSlidingOut, isLast, hasNewNextItem }: OperationItemProps) {
   const isActive = operation.status === 'active';
   const isError = operation.status === 'error';
 
@@ -406,23 +438,12 @@ function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTrac
       className={`
         relative flex items-center gap-2 text-sm py-2 transition-opacity duration-300
         ${isSlidingOut ? 'opacity-0' : isFading ? 'opacity-40' : 'opacity-100'}
-        ${isNew ? 'animate-trace-appear' : ''}
       `}
     >
       <style>{`
         @keyframes shimmer-sweep {
           0% { background-position: -150% 0; }
           100% { background-position: 150% 0; }
-        }
-        @keyframes trace-appear {
-          0% {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
         }
         @keyframes dot-emerge {
           0% {
@@ -446,14 +467,13 @@ function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTrac
             clip-path: inset(0 0 0 0);
           }
         }
-        .animate-trace-appear {
-          animation: trace-appear 0.3s ease-out forwards;
-        }
         .animate-dot-emerge {
-          animation: dot-emerge 0.3s ease-out forwards;
+          animation: dot-emerge 0.2s ease-out 0.25s forwards;
+          transform: scale(0);
+          opacity: 0;
         }
         .animate-text-emerge {
-          animation: text-emerge 0.4s ease-out 0.15s forwards;
+          animation: text-emerge 0.3s ease-out 0.35s forwards;
           opacity: 0;
         }
         @keyframes line-grow-down {
@@ -465,19 +485,22 @@ function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTrac
           }
         }
         .animate-line-grow {
-          animation: line-grow-down 0.3s ease-out forwards;
+          animation: line-grow-down 0.25s ease-out forwards;
+          transform-origin: top;
         }
       `}</style>
       
-      {/* Line segment connecting from previous dot (not on first item) */}
-      {!isFirst && (
+      {/* Line going DOWN to next item (only if not last) */}
+      {!isLast && (
         <div 
-          className={`absolute -left-[15px] w-0.5 origin-top ${
+          className={`absolute -left-5 ${
             hasActiveTraces ? 'bg-zinc-600 dark:bg-zinc-300' : 'bg-zinc-400 dark:bg-zinc-500'
-          } ${isNew ? 'animate-line-grow' : ''}`}
+          } ${hasNewNextItem ? 'animate-line-grow' : ''}`}
           style={{
-            top: '-8px',
-            height: '16px',
+            width: '2px',
+            marginLeft: '4px', /* Center line (2px) under dot (10px): (10-2)/2 = 4px */
+            top: '50%', /* Start at center of current row (where dot is) */
+            height: '100%', /* Span full row height to reach next dot center */
           }}
         />
       )}
@@ -543,7 +566,7 @@ function ShimmerText({ text, isNew }: { text: string; isNew?: boolean }) {
         WebkitBackgroundClip: 'text',
         backgroundClip: 'text',
         animation: isNew 
-          ? 'text-emerge 0.4s ease-out 0.15s forwards, shimmer-sweep 0.8s linear 0.55s infinite'
+          ? 'text-emerge 0.3s ease-out 0.35s forwards, shimmer-sweep 0.8s linear 0.65s infinite'
           : 'shimmer-sweep 0.8s linear infinite',
         opacity: isNew ? 0 : undefined,
       }}
@@ -553,4 +576,21 @@ function ShimmerText({ text, isNew }: { text: string; isNew?: boolean }) {
   );
 }
 
-export default ExecutionTraceTimeline;
+// Memoize the component to prevent re-renders when traces Map reference changes but contents are same
+export default React.memo(ExecutionTraceTimeline, (prevProps, nextProps) => {
+  // Compare isExpanded
+  if (prevProps.isExpanded !== nextProps.isExpanded) return false;
+  
+  // Compare traces Map contents
+  if (prevProps.traces.size !== nextProps.traces.size) return false;
+  
+  for (const [key, value] of prevProps.traces) {
+    const nextValue = nextProps.traces.get(key);
+    if (!nextValue) return false;
+    // Compare trace arrays by length and last trace (quick check)
+    if (value.traces.length !== nextValue.traces.length) return false;
+    if (value.isActive !== nextValue.isActive) return false;
+  }
+  
+  return true; // Props are equal, skip re-render
+});

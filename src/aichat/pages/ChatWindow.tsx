@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Prism from "prismjs";
 import "../styles/index.css";
 import "../styles/prisma/prisma.css";
@@ -12,6 +12,7 @@ import ChatInput, { QueuedMessage } from "../components/ChatInput";
 import MessageItem from "../components/ChatMessageItem";
 import { MessageCache } from "../utils/memory_cache";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingWidget } from "@/components/ui/loading-widget";
 import { convertToChatMessages, HOST } from "../utils/utils";
 import { createWSManager } from "../utils/ws";
 import ToolMessageRenderer, { ToolCallMap } from "../components/ToolMessageRenderer";
@@ -162,8 +163,9 @@ function ChatWindow() {
       const resp = await authFetch(`${HOST}/api/v1/chats/conversations/${cid}`);
       if (resp.ok) {
         verifiedConversationsRef.current.add(cid);
-        // TODO: Implement verifyAndSync in memory_cache.ts
-        // import("../utils/memory_cache").then(({ DB }) => DB.verifyAndSync(cid));
+        // Verify message count matches server and sync if needed
+        console.log('[verifyIfExists] Calling verifyAndSync for:', cid);
+        import("../utils/memory_cache").then(({ DB }) => DB.verifyAndSync(cid)).catch(console.error);
       }
     } catch {
       // ignore 404/Network here; conversation may not be created yet
@@ -1039,32 +1041,7 @@ function ChatWindow() {
                             );
                           }
                           
-                          // Fallback if no traces - check if tool is still running
-                          const content = message.content as any;
-                          const toolName = content.name || 'Tool';
-                          const toolCallId = content.tool_call_id;
-                          
-                          // Check if this tool_call has a corresponding tool_result
-                          const hasResult = memoizedMessages.some(
-                            m => m.role === 'tool_result' && 
-                            typeof m.content === 'object' && 
-                            (m.content as any)?.tool_call_id === toolCallId
-                          );
-                          
-                          // Tool is running if: we're getting a response AND this is the last tool_call AND no result yet
-                          const isLastToolCall = !memoizedMessages.slice(index + 1).some(m => m.role === 'tool_call');
-                          const isRunning = gettingResponse && isLastToolCall && !hasResult;
-                          
-                          return (
-                            <div key={index} className="pt-3 pl-5 pr-3 text-sm flex items-center gap-2">
-                              <span className={`inline-flex rounded-full h-2 w-2 ${isRunning ? 'bg-zinc-600 dark:bg-zinc-300' : 'bg-zinc-400 dark:bg-zinc-500'}`}></span>
-                              {isRunning ? (
-                                <FallbackShimmerText text={toolName} />
-                              ) : (
-                                <span className="text-muted-foreground">{toolName}</span>
-                              )}
-                            </div>
-                          );
+                          return null;
                         }
                         
                         return null;
@@ -1073,11 +1050,21 @@ function ChatWindow() {
                         memoizedMessages.length > 0 &&
                         memoizedMessages[memoizedMessages.length - 1].role === "user" && (
                         <div className="pl-5 pt-2">
-                          <span className="loading-dots">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                          </span>
+                          <LoadingWidget
+                            size={40}
+                            strokeWidthRatio={8}
+                            color="currentColor"
+                            cycleDuration={0.9}
+                          />
+                        </div>
+                      )}
+                      {/* Show active traces during live streaming - they may not match tool_call IDs yet */}
+                      {gettingResponse && hasActiveTraces() && (
+                        <div className="pt-3 pl-3 pr-3">
+                          <ExecutionTraceTimeline 
+                            traces={traces} 
+                            isExpanded={true}
+                          />
                         </div>
                       )}
                       <div id="last-message" className="h-1"></div> 
@@ -1139,70 +1126,71 @@ function DebugTracesPanel() {
   const [mockTraces, setMockTraces] = useState<Map<string, any>>(new Map());
   const [isRunning, setIsRunning] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const renderIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const tracesRef = useRef<Map<string, any>>(new Map());
 
-  // Comprehensive mock trace sequence covering all tool types
-  const mockTraceSequence = [
-    // 1. Main code execution starts
-    { tool: 'code', operation: 'Execute_TypeScript', status: 'start', label: 'Executing code', traceKey: 'main' },
+  // Generate 100 fast mock traces for animation testing
+  const mockTraceSequence = useMemo(() => {
+    const traces: Array<{ tool: string; operation: string; status: string; label: string; traceKey: string; duration_ms?: number }> = [];
+    const tools = ['tavily', 'web', 'graph', 'math', 'skills'];
+    const operations = {
+      tavily: ['search', 'quickSearch'],
+      web: ['get', 'post', 'put', 'delete'],
+      graph: ['get', 'post', 'batch'],
+      math: ['evaluate', 'simplify', 'derive'],
+      skills: ['list', 'read', 'create', 'edit'],
+    };
     
-    // 2-4. Tavily search with progress
-    { tool: 'tavily', operation: 'search', status: 'start', label: 'Searching: "chicago bears news 2024"', traceKey: 'search1' },
-    { tool: 'tavily', operation: 'search', status: 'progress', label: 'Querying search index...', traceKey: 'search1' },
-    { tool: 'tavily', operation: 'search', status: 'end', label: 'Found 8 results', traceKey: 'search1', duration_ms: 1847 },
+    // Generate 50 start/end pairs = 100 traces
+    for (let i = 0; i < 50; i++) {
+      const tool = tools[i % tools.length];
+      const op = operations[tool as keyof typeof operations][i % operations[tool as keyof typeof operations].length];
+      const traceKey = `trace_${i}`;
+      
+      // Start trace
+      traces.push({
+        tool,
+        operation: op,
+        status: 'start',
+        label: `${op}: operation ${i + 1}`,
+        traceKey,
+      });
+      
+      // End trace (randomly add error for some)
+      const isError = i % 13 === 0; // Every 13th is an error
+      traces.push({
+        tool,
+        operation: op,
+        status: isError ? 'error' : 'end',
+        label: isError ? `Failed: error ${i + 1}` : `Completed ${i + 1}`,
+        traceKey,
+        duration_ms: Math.floor(Math.random() * 500) + 50,
+      });
+    }
     
-    // 5-6. Web request
-    { tool: 'web', operation: 'get', status: 'start', label: 'GET https://api.example.com/users', traceKey: 'web1' },
-    { tool: 'web', operation: 'get', status: 'end', label: 'Request completed (200)', traceKey: 'web1', duration_ms: 342 },
-    
-    // 7-8. Graph API call
-    { tool: 'graph', operation: 'get', status: 'start', label: 'GET /me/messages', traceKey: 'graph1' },
-    { tool: 'graph', operation: 'get', status: 'end', label: 'Fetched 25 messages', traceKey: 'graph1', duration_ms: 891 },
-    
-    // 9-10. Math evaluation
-    { tool: 'math', operation: 'evaluate', status: 'start', label: 'Evaluating: sqrt(144) + 2^8', traceKey: 'math1' },
-    { tool: 'math', operation: 'evaluate', status: 'end', label: 'Result: 268', traceKey: 'math1', duration_ms: 12 },
-    
-    // 11-12. Skills list
-    { tool: 'skills', operation: 'list', status: 'start', label: 'Listing skills', traceKey: 'skills1' },
-    { tool: 'skills', operation: 'list', status: 'end', label: 'Found 12 skills', traceKey: 'skills1', duration_ms: 45 },
-    
-    // 13-14. Skills read
-    { tool: 'skills', operation: 'read', status: 'start', label: 'Reading skill: graph_api.md', traceKey: 'skills2' },
-    { tool: 'skills', operation: 'read', status: 'end', label: 'Skill loaded (2.4kb)', traceKey: 'skills2', duration_ms: 23 },
-    
-    // 15-17. Another search
-    { tool: 'tavily', operation: 'quickSearch', status: 'start', label: 'Quick search: "TypeScript async patterns"', traceKey: 'search2' },
-    { tool: 'tavily', operation: 'quickSearch', status: 'progress', label: 'Processing results...', traceKey: 'search2' },
-    { tool: 'tavily', operation: 'quickSearch', status: 'end', label: 'Found 5 results', traceKey: 'search2', duration_ms: 923 },
-    
-    // 18-19. Web POST
-    { tool: 'web', operation: 'post', status: 'start', label: 'POST https://api.example.com/data', traceKey: 'web2' },
-    { tool: 'web', operation: 'post', status: 'end', label: 'Created resource (201)', traceKey: 'web2', duration_ms: 567 },
-    
-    // 20-21. Graph batch
-    { tool: 'graph', operation: 'batch', status: 'start', label: 'Batch: 3 requests', traceKey: 'graph2' },
-    { tool: 'graph', operation: 'batch', status: 'end', label: 'Batch completed', traceKey: 'graph2', duration_ms: 1234 },
-    
-    // 22-23. Error example
-    { tool: 'web', operation: 'get', status: 'start', label: 'GET https://api.example.com/protected', traceKey: 'web3' },
-    { tool: 'web', operation: 'get', status: 'error', label: 'Failed: unauthorized (401)', traceKey: 'web3', duration_ms: 156 },
-    
-    // 24-25. Skills create
-    { tool: 'skills', operation: 'create', status: 'start', label: 'Creating skill: new_workflow.md', traceKey: 'skills3' },
-    { tool: 'skills', operation: 'create', status: 'end', label: 'Skill created', traceKey: 'skills3', duration_ms: 89 },
-    
-    // 26. Main execution ends
-    { tool: 'code', operation: 'Execute_TypeScript', status: 'end', label: 'Executed code', traceKey: 'main', duration_ms: 8934 },
-  ];
+    return traces;
+  }, []);
+  
+  // Interval speed in ms (50ms = very fast)
+  const [intervalSpeed, setIntervalSpeed] = useState(50);
+  const [infiniteMode, setInfiniteMode] = useState(false);
+  const intervalSpeedRef = useRef(50);
+  const infiniteModeRef = useRef(false);
+  
+  // Keep refs in sync with state
+  useEffect(() => { intervalSpeedRef.current = intervalSpeed; }, [intervalSpeed]);
+  useEffect(() => { infiniteModeRef.current = infiniteMode; }, [infiniteMode]);
 
   const startMockTraces = () => {
-    setIsRunning(true);
     const toolCallId = `debug_${Date.now()}`;
+    toolCallIdRef.current = toolCallId;
+    stepRef.current = 0;
+    traceCounterRef.current = 0;
     const now = Date.now();
     
     // Initial trace - start executing code
     const firstTrace = mockTraceSequence[0];
-    setMockTraces(new Map([[toolCallId, {
+    const initialMap = new Map([[toolCallId, {
       tool_call_id: toolCallId,
       traces: [{
         type: 'execution_trace',
@@ -1216,57 +1204,13 @@ function DebugTracesPanel() {
       }],
       isActive: true,
       startTime: now,
-    }]]));
-
-    // Simulate trace progression
-    let step = 0;
-    const totalSteps = mockTraceSequence.length - 1; // -1 because we already added first one
+    }]]);
     
-    intervalRef.current = setInterval(() => {
-      step++;
-      if (step > totalSteps) {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        setIsRunning(false);
-        return;
-      }
-      
-      const stepTime = now + step * 600; // 600ms between each trace
-      const traceData = mockTraceSequence[step];
-      
-      setMockTraces(prev => {
-        const newMap = new Map(prev);
-        const existing = newMap.get(toolCallId);
-        if (!existing) return prev;
-        
-        const newTraces = [...existing.traces];
-        
-        newTraces.push({
-          type: 'execution_trace',
-          trace_id: `${toolCallId}_${traceData.traceKey}`,
-          tool_call_id: toolCallId,
-          tool: traceData.tool,
-          operation: traceData.operation,
-          status: traceData.status,
-          label: traceData.label,
-          timestamp: stepTime,
-          duration_ms: traceData.duration_ms,
-        });
-        
-        const isLastTrace = step === totalSteps;
-        
-        newMap.set(toolCallId, {
-          ...existing,
-          traces: newTraces,
-          isActive: !isLastTrace,
-          endTime: isLastTrace ? stepTime : undefined,
-        });
-        
-        return newMap;
-      });
-    }, 600);
+    tracesRef.current = initialMap;
+    setMockTraces(initialMap);
+
+    // Setting isRunning will trigger the useEffect to start the interval
+    setIsRunning(true);
   };
 
   const stopMockTraces = () => {
@@ -1274,32 +1218,133 @@ function DebugTracesPanel() {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+    if (renderIntervalRef.current) {
+      clearInterval(renderIntervalRef.current);
+      renderIntervalRef.current = null;
+    }
     setIsRunning(false);
   };
 
   const clearMockTraces = () => {
     stopMockTraces();
+    tracesRef.current = new Map();
     setMockTraces(new Map());
   };
+
+  // Store current step in a ref so we can resume at same position when speed changes
+  const stepRef = useRef(0);
+  const traceCounterRef = useRef(0);
+  const toolCallIdRef = useRef<string>('');
+  
+  // Restart interval when speed changes while running
+  useEffect(() => {
+    if (!isRunning) return;
+    
+    // Clear current intervals if exist
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (renderIntervalRef.current) clearInterval(renderIntervalRef.current);
+    
+    const toolCallId = toolCallIdRef.current;
+    const totalSteps = mockTraceSequence.length - 1;
+    
+    // Render interval - sync ref to state at fixed rate (60fps = ~16ms)
+    renderIntervalRef.current = setInterval(() => {
+      setMockTraces(new Map(tracesRef.current));
+    }, 16);
+    
+    // Data interval - add traces at configured speed
+    intervalRef.current = setInterval(() => {
+      stepRef.current++;
+      
+      if (stepRef.current > totalSteps) {
+        if (infiniteModeRef.current) {
+          // Reset to beginning and clear traces for fresh cycle
+          stepRef.current = 0;
+          traceCounterRef.current++;
+          const cycleTime = Date.now();
+          const firstTrace = mockTraceSequence[0];
+          
+          tracesRef.current = new Map([[toolCallId, {
+            tool_call_id: toolCallId,
+            traces: [{
+              type: 'execution_trace',
+              trace_id: `${toolCallId}_${firstTrace.traceKey}_${traceCounterRef.current}`,
+              tool_call_id: toolCallId,
+              tool: firstTrace.tool,
+              operation: firstTrace.operation,
+              status: firstTrace.status,
+              label: firstTrace.label,
+              timestamp: cycleTime,
+            }],
+            isActive: true,
+            startTime: cycleTime,
+          }]]);
+          return;
+        } else {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          if (renderIntervalRef.current) {
+            clearInterval(renderIntervalRef.current);
+            renderIntervalRef.current = null;
+          }
+          setMockTraces(new Map(tracesRef.current));
+          setIsRunning(false);
+          return;
+        }
+      }
+      
+      const stepTime = Date.now();
+      const traceData = mockTraceSequence[stepRef.current];
+      
+      const existing = tracesRef.current.get(toolCallId);
+      if (!existing) return;
+      
+      const newTraces = [...existing.traces];
+      
+      newTraces.push({
+        type: 'execution_trace',
+        trace_id: `${toolCallId}_${traceData.traceKey}_${traceCounterRef.current}`,
+        tool_call_id: toolCallId,
+        tool: traceData.tool,
+        operation: traceData.operation,
+        status: traceData.status,
+        label: traceData.label,
+        timestamp: stepTime,
+        duration_ms: traceData.duration_ms,
+      });
+      
+      const isLastTrace = stepRef.current === totalSteps && !infiniteModeRef.current;
+      
+      tracesRef.current = new Map([[toolCallId, {
+        ...existing,
+        traces: newTraces,
+        isActive: infiniteModeRef.current || !isLastTrace,
+        endTime: isLastTrace ? stepTime : undefined,
+      }]]);
+    }, intervalSpeedRef.current);
+    
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (renderIntervalRef.current) clearInterval(renderIntervalRef.current);
+    };
+  }, [intervalSpeed, isRunning]);
 
   return (
     <div className="border-b border-border bg-yellow-500/10 p-4">
       <div className="max-w-3xl mx-auto">
-        <div className="flex items-center gap-4 mb-4">
-          <span className="text-sm font-medium text-yellow-600 dark:text-yellow-400">DEBUG TRACES</span>
-          <button
-            onClick={isRunning ? stopMockTraces : startMockTraces}
-            className={`px-3 py-1 text-sm rounded ${isRunning ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}
-          >
-            {isRunning ? 'Stop' : 'Start Mock Traces'}
-          </button>
-          <button
-            onClick={clearMockTraces}
-            className="px-3 py-1 text-sm rounded bg-gray-500 text-white"
-          >
-            Clear
-          </button>
-        </div>
+        <DebugTracesControls
+          isRunning={isRunning}
+          intervalSpeed={intervalSpeed}
+          infiniteMode={infiniteMode}
+          traceCount={mockTraceSequence.length}
+          onStart={startMockTraces}
+          onStop={stopMockTraces}
+          onClear={clearMockTraces}
+          onSpeedChange={setIntervalSpeed}
+          onInfiniteModeChange={setInfiniteMode}
+        />
         
         {/* Show the fallback tool display (shimmer) */}
         <div className="mb-4 p-3 bg-background rounded border border-border">
@@ -1321,6 +1366,70 @@ function DebugTracesPanel() {
     </div>
   );
 }
+
+/**
+ * Separate controls component that won't re-render when traces update
+ */
+const DebugTracesControls = React.memo(function DebugTracesControls({
+  isRunning,
+  intervalSpeed,
+  infiniteMode,
+  traceCount,
+  onStart,
+  onStop,
+  onClear,
+  onSpeedChange,
+  onInfiniteModeChange,
+}: {
+  isRunning: boolean;
+  intervalSpeed: number;
+  infiniteMode: boolean;
+  traceCount: number;
+  onStart: () => void;
+  onStop: () => void;
+  onClear: () => void;
+  onSpeedChange: (speed: number) => void;
+  onInfiniteModeChange: (infinite: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center gap-4 mb-4">
+      <span className="text-sm font-medium text-yellow-600 dark:text-yellow-400">DEBUG TRACES</span>
+      <button
+        onClick={isRunning ? onStop : onStart}
+        className={`px-3 py-1 text-sm rounded ${isRunning ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}
+      >
+        {isRunning ? 'Stop' : 'Start Mock Traces'}
+      </button>
+      <button
+        onClick={onClear}
+        className="px-3 py-1 text-sm rounded bg-gray-500 text-white"
+      >
+        Clear
+      </button>
+      <span className="text-xs text-muted-foreground">Speed:</span>
+      <select 
+        value={intervalSpeed} 
+        onChange={(e) => onSpeedChange(Number(e.target.value))}
+        className="px-2 py-1 text-sm rounded border bg-background"
+      >
+        <option value={25}>25ms (insane)</option>
+        <option value={50}>50ms (very fast)</option>
+        <option value={100}>100ms (fast)</option>
+        <option value={200}>200ms (medium)</option>
+        <option value={500}>500ms (slow)</option>
+      </select>
+      <span className="text-xs text-muted-foreground">{traceCount} traces</span>
+      <label className="flex items-center gap-1 text-xs">
+        <input
+          type="checkbox"
+          checked={infiniteMode}
+          onChange={(e) => onInfiniteModeChange(e.target.checked)}
+        />
+        Infinite
+      </label>
+    </div>
+  );
+});
 
 /**
  * Shimmer text for fallback tool display (when no traces available)
