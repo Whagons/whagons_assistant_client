@@ -330,6 +330,7 @@ function toTriedLabel(label: string): string {
  * Single operation in the timeline with animation support
  */
 function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTraces }: OperationItemProps) {
+  const isActive = operation.status === 'active';
   const isError = operation.status === 'error';
 
   // Show start label while active, end label when done, "Tried..." for errors
