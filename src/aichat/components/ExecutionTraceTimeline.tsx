@@ -319,8 +319,7 @@ function OperationItem({ operation, isShimmering, isFading }: OperationItemProps
       <span 
         className={`
           flex-1 min-w-0 truncate
-          ${isError ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}
-          ${isShimmering ? 'shimmer-text' : ''}
+          ${isError ? 'text-orange-600 dark:text-orange-400' : isShimmering ? 'shimmer-loading' : 'text-muted-foreground'}
         `}
       >
         {displayLabel}

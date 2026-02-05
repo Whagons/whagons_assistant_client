@@ -432,8 +432,8 @@ textarea.overflow-y-hidden {
   -ms-overflow-style: none; /* IE and Edge */
   scrollbar-width: none; /* Firefox */
 }
-/* Execution Trace Timeline Animations - Shimmer/Strobe Effect */
-@keyframes shimmer {
+/* Shimmer/Strobe Effect for loading text */
+@keyframes shimmer-animation {
   0% {
     background-position: -150% 0;
   }
@@ -442,20 +442,34 @@ textarea.overflow-y-hidden {
   }
 }
 
-/* Shimmer text effect - sweeping light beam */
-.shimmer-text {
+/* Dark mode - white shimmer on dark background */
+.shimmer-loading {
+  color: rgba(255, 255, 255, 0.1) !important;
   background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.15) 20%,
-    rgba(255, 255, 255, 0.9) 50%,
-    rgba(255, 255, 255, 0.15) 80%
+    90deg, 
+    transparent 20%, 
+    rgba(255, 255, 255, 0.8) 50%, 
+    transparent 80%
   ) !important;
   background-size: 150% 100% !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  color: transparent !important;
-  animation: shimmer 0.8s linear infinite !important;
+  animation: shimmer-animation 0.8s linear infinite !important;
+}
+
+/* Light mode - dark shimmer on light background */
+:root:not(.dark) .shimmer-loading,
+html:not(.dark) .shimmer-loading {
+  color: rgba(0, 0, 0, 0.1) !important;
+  background: linear-gradient(
+    90deg, 
+    transparent 20%, 
+    rgba(0, 0, 0, 0.7) 50%, 
+    transparent 80%
+  ) !important;
+  background-size: 150% 100% !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
 }
 
 @keyframes pulse-subtle {

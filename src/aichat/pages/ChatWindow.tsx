@@ -1037,9 +1037,9 @@ function ChatWindow() {
                           const content = message.content as any;
                           const toolName = content.name || 'Tool';
                           return (
-                            <div key={index} className="pt-3 pl-5 pr-3 text-sm text-muted-foreground flex items-center gap-2">
+                            <div key={index} className="pt-3 pl-5 pr-3 text-sm flex items-center gap-2">
                               <span className="inline-flex rounded-full h-2 w-2 bg-green-500 animate-pulse"></span>
-                              <span className={gettingResponse ? 'shimmer-text' : ''}>{toolName}</span>
+                              <span className={gettingResponse ? 'shimmer-loading' : 'text-muted-foreground'}>{toolName}</span>
                             </div>
                           );
                         }
