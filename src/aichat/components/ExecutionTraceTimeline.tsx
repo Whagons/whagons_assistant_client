@@ -24,6 +24,10 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
   // Track which operation IDs we've seen to detect new ones
   const seenOperationIds = useRef<Set<string>>(new Set());
   const [newOperationIds, setNewOperationIds] = useState<Set<string>>(new Set());
+  
+  // For slide animation: show MAX+1 items, animate slide, then trim
+  const [isSliding, setIsSliding] = useState(false);
+  const [showExtraItem, setShowExtraItem] = useState(false);
 
   // Determine if any trace is still active
   const hasActiveTraces = useMemo(() => {
@@ -136,6 +140,9 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
     return ops.sort((a, b) => a.timestamp - b.timestamp);
   }, [traces]);
 
+  // Track previous operation count to detect when items need to slide
+  const prevOperationCount = useRef(0);
+
   // Track new operations for animation
   useEffect(() => {
     const currentIds = new Set(operations.map(op => op.id));
@@ -148,9 +155,42 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
       }
     }
     
+    // Check if we need to slide (was at or over max, and adding new items)
+    const wasAtMax = prevOperationCount.current >= MAX_VISIBLE_ITEMS;
+    const isAddingNew = newIds.size > 0;
+    
+    if (wasAtMax && isAddingNew) {
+      // Step 1: Show extra item (MAX+1 visible)
+      setShowExtraItem(true);
+      // Step 2: Start slide animation
+      requestAnimationFrame(() => {
+        setIsSliding(true);
+      });
+      // Step 3: After animation, hide extra item and stop sliding
+      const timer = setTimeout(() => {
+        setIsSliding(false);
+        setShowExtraItem(false);
+      }, 300);
+      
+      prevOperationCount.current = operations.length;
+      
+      if (newIds.size > 0) {
+        setNewOperationIds(newIds);
+        const newTimer = setTimeout(() => {
+          setNewOperationIds(new Set());
+        }, 500);
+        return () => {
+          clearTimeout(timer);
+          clearTimeout(newTimer);
+        };
+      }
+      return () => clearTimeout(timer);
+    }
+    
+    prevOperationCount.current = operations.length;
+    
     if (newIds.size > 0) {
       setNewOperationIds(newIds);
-      // Clear "new" status after animation completes
       const timer = setTimeout(() => {
         setNewOperationIds(new Set());
       }, 500);
@@ -162,9 +202,11 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
     return null;
   }
 
-  // Get visible operations (last MAX_VISIBLE_ITEMS)
-  const visibleOps = operations.slice(-MAX_VISIBLE_ITEMS);
-  const hiddenCount = Math.max(0, operations.length - MAX_VISIBLE_ITEMS);
+  // Get visible operations
+  // When sliding, show MAX+1 items so we can animate the top one out
+  const itemsToShow = showExtraItem ? MAX_VISIBLE_ITEMS + 1 : MAX_VISIBLE_ITEMS;
+  const visibleOps = operations.slice(-itemsToShow);
+  const hiddenCount = Math.max(0, operations.length - itemsToShow);
 
   // Count for header
   const completedCount = operations.filter(op => op.status === 'end').length;
@@ -253,9 +295,19 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
               />
             )}
             
-            <div className="space-y-0">
+            <style>{`
+              .slide-container {
+                transition: transform 0.3s ease-out;
+              }
+              .slide-container.sliding {
+                transform: translateY(-36px);
+              }
+            `}</style>
+            <div className={`space-y-0 slide-container ${isSliding ? 'sliding' : ''}`}>
               {visibleOps.map((op, index) => {
-                const isFirstAndFading = index === 0 && operations.length > MAX_VISIBLE_ITEMS;
+                // The first item fades out when we're sliding (it's the one being pushed out)
+                const isFadingOut = index === 0 && isSliding;
+                const isFirstAndFading = index === 0 && (operations.length > MAX_VISIBLE_ITEMS || showExtraItem);
                 // Shimmer only the LAST item if it's active (the currently running one)
                 const isLastAndActive = index === visibleOps.length - 1 && op.status === 'active';
                 const isNew = newOperationIds.has(op.id);
@@ -265,6 +317,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
                     key={op.id} 
                     operation={op} 
                     isShimmering={isLastAndActive}
+                    isSlidingOut={isFadingOut}
                     isFading={isFirstAndFading}
                     isNew={isNew}
                     hasActiveTraces={hasActiveTraces}
@@ -297,6 +350,7 @@ interface OperationItemProps {
   isFading?: boolean;
   isNew?: boolean;
   hasActiveTraces?: boolean;
+  isSlidingOut?: boolean;
 }
 
 /**
@@ -338,7 +392,7 @@ function toTriedLabel(label: string): string {
 /**
  * Single operation in the timeline with animation support
  */
-function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTraces }: OperationItemProps) {
+function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTraces, isSlidingOut }: OperationItemProps) {
   const isActive = operation.status === 'active';
   const isError = operation.status === 'error';
 
@@ -355,9 +409,8 @@ function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTrac
   return (
     <div 
       className={`
-        relative flex items-center gap-2 text-sm py-2
-        transition-all duration-300 ease-out
-        ${isFading ? 'opacity-30 -translate-y-2' : 'opacity-100 translate-y-0'}
+        relative flex items-center gap-2 text-sm py-2 transition-opacity duration-300
+        ${isSlidingOut ? 'opacity-0' : isFading ? 'opacity-40' : 'opacity-100'}
         ${isNew ? 'animate-trace-appear' : ''}
       `}
     >
