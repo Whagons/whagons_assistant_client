@@ -210,12 +210,14 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
             <div className="space-y-0">
               {visibleOps.map((op, index) => {
                 const isFirstAndFading = index === 0 && operations.length > MAX_VISIBLE_ITEMS;
+                // Only shimmer the last active operation
+                const isLastActive = index === visibleOps.length - 1 && op.status === 'active';
                 
                 return (
                   <OperationItem 
                     key={op.id} 
                     operation={op} 
-                    isShimmering={op.status === 'active'}
+                    isShimmering={isLastActive}
                     isFading={isFirstAndFading}
                   />
                 );

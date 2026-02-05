@@ -442,34 +442,30 @@ textarea.overflow-y-hidden {
   }
 }
 
+/* Light mode shimmer - dark text on light background */
 .shimmer-text {
-  /* Light beam gradient sweeping across - dark mode */
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.15) 20%,
-    rgba(255, 255, 255, 0.9) 50%,
-    rgba(255, 255, 255, 0.15) 80%
-  );
-  /* Make background wider than text for smooth animation */
-  background-size: 150% 100%;
-  /* Clip to text shape - need both for cross-browser */
-  -webkit-background-clip: text;
-  background-clip: text;
-  /* CRITICAL: Must set text fill to transparent for background-clip to show */
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  /* Fast continuous animation */
-  animation: shimmer 0.8s linear infinite;
-}
-
-/* Light mode shimmer - darker beam on light background */
-:root:not(.dark) .shimmer-text,
-body:not(.dark) .shimmer-text {
   background: linear-gradient(
     90deg,
     rgba(0, 0, 0, 0.15) 20%,
     rgba(0, 0, 0, 0.8) 50%,
     rgba(0, 0, 0, 0.15) 80%
+  );
+  background-size: 150% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: shimmer 0.8s linear infinite;
+}
+
+/* Dark mode shimmer - white text on dark background */
+.dark .shimmer-text,
+body.dark .shimmer-text {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.15) 20%,
+    rgba(255, 255, 255, 0.9) 50%,
+    rgba(255, 255, 255, 0.15) 80%
   );
   background-size: 150% 100%;
   -webkit-background-clip: text;
