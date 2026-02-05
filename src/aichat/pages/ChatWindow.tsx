@@ -1140,22 +1140,78 @@ function DebugTracesPanel() {
   const [isRunning, setIsRunning] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Comprehensive mock trace sequence covering all tool types
+  const mockTraceSequence = [
+    // 1. Main code execution starts
+    { tool: 'code', operation: 'Execute_TypeScript', status: 'start', label: 'Executing code', traceKey: 'main' },
+    
+    // 2-4. Tavily search with progress
+    { tool: 'tavily', operation: 'search', status: 'start', label: 'Searching: "chicago bears news 2024"', traceKey: 'search1' },
+    { tool: 'tavily', operation: 'search', status: 'progress', label: 'Querying search index...', traceKey: 'search1' },
+    { tool: 'tavily', operation: 'search', status: 'end', label: 'Found 8 results', traceKey: 'search1', duration_ms: 1847 },
+    
+    // 5-6. Web request
+    { tool: 'web', operation: 'get', status: 'start', label: 'GET https://api.example.com/users', traceKey: 'web1' },
+    { tool: 'web', operation: 'get', status: 'end', label: 'Request completed (200)', traceKey: 'web1', duration_ms: 342 },
+    
+    // 7-8. Graph API call
+    { tool: 'graph', operation: 'get', status: 'start', label: 'GET /me/messages', traceKey: 'graph1' },
+    { tool: 'graph', operation: 'get', status: 'end', label: 'Fetched 25 messages', traceKey: 'graph1', duration_ms: 891 },
+    
+    // 9-10. Math evaluation
+    { tool: 'math', operation: 'evaluate', status: 'start', label: 'Evaluating: sqrt(144) + 2^8', traceKey: 'math1' },
+    { tool: 'math', operation: 'evaluate', status: 'end', label: 'Result: 268', traceKey: 'math1', duration_ms: 12 },
+    
+    // 11-12. Skills list
+    { tool: 'skills', operation: 'list', status: 'start', label: 'Listing skills', traceKey: 'skills1' },
+    { tool: 'skills', operation: 'list', status: 'end', label: 'Found 12 skills', traceKey: 'skills1', duration_ms: 45 },
+    
+    // 13-14. Skills read
+    { tool: 'skills', operation: 'read', status: 'start', label: 'Reading skill: graph_api.md', traceKey: 'skills2' },
+    { tool: 'skills', operation: 'read', status: 'end', label: 'Skill loaded (2.4kb)', traceKey: 'skills2', duration_ms: 23 },
+    
+    // 15-17. Another search
+    { tool: 'tavily', operation: 'quickSearch', status: 'start', label: 'Quick search: "TypeScript async patterns"', traceKey: 'search2' },
+    { tool: 'tavily', operation: 'quickSearch', status: 'progress', label: 'Processing results...', traceKey: 'search2' },
+    { tool: 'tavily', operation: 'quickSearch', status: 'end', label: 'Found 5 results', traceKey: 'search2', duration_ms: 923 },
+    
+    // 18-19. Web POST
+    { tool: 'web', operation: 'post', status: 'start', label: 'POST https://api.example.com/data', traceKey: 'web2' },
+    { tool: 'web', operation: 'post', status: 'end', label: 'Created resource (201)', traceKey: 'web2', duration_ms: 567 },
+    
+    // 20-21. Graph batch
+    { tool: 'graph', operation: 'batch', status: 'start', label: 'Batch: 3 requests', traceKey: 'graph2' },
+    { tool: 'graph', operation: 'batch', status: 'end', label: 'Batch completed', traceKey: 'graph2', duration_ms: 1234 },
+    
+    // 22-23. Error example
+    { tool: 'web', operation: 'get', status: 'start', label: 'GET https://api.example.com/protected', traceKey: 'web3' },
+    { tool: 'web', operation: 'get', status: 'error', label: 'Failed: unauthorized (401)', traceKey: 'web3', duration_ms: 156 },
+    
+    // 24-25. Skills create
+    { tool: 'skills', operation: 'create', status: 'start', label: 'Creating skill: new_workflow.md', traceKey: 'skills3' },
+    { tool: 'skills', operation: 'create', status: 'end', label: 'Skill created', traceKey: 'skills3', duration_ms: 89 },
+    
+    // 26. Main execution ends
+    { tool: 'code', operation: 'Execute_TypeScript', status: 'end', label: 'Executed code', traceKey: 'main', duration_ms: 8934 },
+  ];
+
   const startMockTraces = () => {
     setIsRunning(true);
     const toolCallId = `debug_${Date.now()}`;
     const now = Date.now();
     
     // Initial trace - start executing code
+    const firstTrace = mockTraceSequence[0];
     setMockTraces(new Map([[toolCallId, {
       tool_call_id: toolCallId,
       traces: [{
         type: 'execution_trace',
-        trace_id: `${toolCallId}_main`,
+        trace_id: `${toolCallId}_${firstTrace.traceKey}`,
         tool_call_id: toolCallId,
-        tool: 'code',
-        operation: 'Execute_TypeScript',
-        status: 'start',
-        label: 'Executing code',
+        tool: firstTrace.tool,
+        operation: firstTrace.operation,
+        status: firstTrace.status,
+        label: firstTrace.label,
         timestamp: now,
       }],
       isActive: true,
@@ -1164,9 +1220,21 @@ function DebugTracesPanel() {
 
     // Simulate trace progression
     let step = 0;
+    const totalSteps = mockTraceSequence.length - 1; // -1 because we already added first one
+    
     intervalRef.current = setInterval(() => {
       step++;
-      const stepTime = now + step * 800;
+      if (step > totalSteps) {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        setIsRunning(false);
+        return;
+      }
+      
+      const stepTime = now + step * 600; // 600ms between each trace
+      const traceData = mockTraceSequence[step];
       
       setMockTraces(prev => {
         const newMap = new Map(prev);
@@ -1175,100 +1243,30 @@ function DebugTracesPanel() {
         
         const newTraces = [...existing.traces];
         
-        if (step === 1) {
-          // Start search
-          newTraces.push({
-            type: 'execution_trace',
-            trace_id: `${toolCallId}_search`,
-            tool_call_id: toolCallId,
-            tool: 'tavily',
-            operation: 'search',
-            status: 'start',
-            label: 'Searching: "chicago bears"',
-            timestamp: stepTime,
-          });
-        } else if (step === 2) {
-          // Search progress
-          newTraces.push({
-            type: 'execution_trace',
-            trace_id: `${toolCallId}_search`,
-            tool_call_id: toolCallId,
-            tool: 'tavily',
-            operation: 'search',
-            status: 'progress',
-            label: 'Querying search index...',
-            timestamp: stepTime,
-          });
-        } else if (step === 3) {
-          // Search end
-          newTraces.push({
-            type: 'execution_trace',
-            trace_id: `${toolCallId}_search`,
-            tool_call_id: toolCallId,
-            tool: 'tavily',
-            operation: 'search',
-            status: 'end',
-            label: 'Found 5 results',
-            timestamp: stepTime,
-            duration_ms: 1600,
-          });
-        } else if (step === 4) {
-          // Start math
-          newTraces.push({
-            type: 'execution_trace',
-            trace_id: `${toolCallId}_math`,
-            tool_call_id: toolCallId,
-            tool: 'math',
-            operation: 'evaluate',
-            status: 'start',
-            label: 'Evaluating: 2 + 2 * 3 - 8 / 4',
-            timestamp: stepTime,
-          });
-        } else if (step === 5) {
-          // Math end
-          newTraces.push({
-            type: 'execution_trace',
-            trace_id: `${toolCallId}_math`,
-            tool_call_id: toolCallId,
-            tool: 'math',
-            operation: 'evaluate',
-            status: 'end',
-            label: 'Result: 6',
-            timestamp: stepTime,
-            duration_ms: 50,
-          });
-        } else if (step === 6) {
-          // Main execution end
-          newTraces.push({
-            type: 'execution_trace',
-            trace_id: `${toolCallId}_main`,
-            tool_call_id: toolCallId,
-            tool: 'code',
-            operation: 'Execute_TypeScript',
-            status: 'end',
-            label: 'Executed code',
-            timestamp: stepTime,
-            duration_ms: 4800,
-          });
-          
-          // Stop interval
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
-          setIsRunning(false);
-        }
+        newTraces.push({
+          type: 'execution_trace',
+          trace_id: `${toolCallId}_${traceData.traceKey}`,
+          tool_call_id: toolCallId,
+          tool: traceData.tool,
+          operation: traceData.operation,
+          status: traceData.status,
+          label: traceData.label,
+          timestamp: stepTime,
+          duration_ms: traceData.duration_ms,
+        });
+        
+        const isLastTrace = step === totalSteps;
         
         newMap.set(toolCallId, {
           ...existing,
           traces: newTraces,
-          isActive: step < 6,
-          endTime: step >= 6 ? stepTime : undefined,
+          isActive: !isLastTrace,
+          endTime: isLastTrace ? stepTime : undefined,
         });
         
         return newMap;
       });
-    }, 800);
+    }, 600);
   };
 
   const stopMockTraces = () => {
@@ -1303,25 +1301,12 @@ function DebugTracesPanel() {
           </button>
         </div>
         
-        {/* Show the fallback tool display (green dot + shimmer) */}
+        {/* Show the fallback tool display (shimmer) */}
         <div className="mb-4 p-3 bg-background rounded border border-border">
           <div className="text-xs text-muted-foreground mb-2">Fallback Display (no traces):</div>
           <div className="pt-3 pl-5 pr-3 text-sm flex items-center gap-2">
-            <span className="inline-flex rounded-full h-2 w-2 bg-green-500 animate-pulse"></span>
-            <style>{`
-              @keyframes shimmer-sweep {
-                0% { background-position: -150% 0; }
-                100% { background-position: 150% 0; }
-              }
-            `}</style>
-            <span style={{
-              color: 'rgba(255, 255, 255, 0.1)',
-              background: 'linear-gradient(90deg, transparent 20%, rgba(255, 255, 255, 0.8) 50%, transparent 80%)',
-              backgroundSize: '150% 100%',
-              WebkitBackgroundClip: 'text',
-              backgroundClip: 'text',
-              animation: 'shimmer-sweep 0.8s linear infinite',
-            }}>Search</span>
+            <span className="inline-flex rounded-full h-2 w-2 bg-zinc-600 dark:bg-zinc-300"></span>
+            <FallbackShimmerText text="Search" />
           </div>
         </div>
         
