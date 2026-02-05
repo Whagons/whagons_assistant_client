@@ -432,29 +432,48 @@ textarea.overflow-y-hidden {
   -ms-overflow-style: none; /* IE and Edge */
   scrollbar-width: none; /* Firefox */
 }
-/* Execution Trace Timeline Animations */
+/* Execution Trace Timeline Animations - Shimmer/Strobe Effect */
 @keyframes shimmer {
   0% {
-    background-position: -200% 0;
+    background-position: -150% 0;
   }
   100% {
-    background-position: 200% 0;
+    background-position: 150% 0;
   }
 }
 
 .shimmer-text {
+  /* Base color is very dim */
+  color: rgba(255, 255, 255, 0.15);
+  /* Light beam gradient sweeping across */
   background: linear-gradient(
     90deg,
-    currentColor 0%,
-    currentColor 40%,
-    color-mix(in srgb, currentColor 60%, transparent) 50%,
-    currentColor 60%,
-    currentColor 100%
+    transparent 20%,
+    rgba(255, 255, 255, 0.8) 50%,
+    transparent 80%
   );
-  background-size: 200% 100%;
-  background-clip: text;
+  /* Make background wider than text for smooth animation */
+  background-size: 150% 100%;
+  /* Clip to text shape */
   -webkit-background-clip: text;
-  animation: shimmer 2s infinite linear;
+  background-clip: text;
+  /* Fast continuous animation */
+  animation: shimmer 0.8s linear infinite;
+}
+
+/* Light mode shimmer - darker beam on light background */
+:root:not(.dark) .shimmer-text,
+body:not(.dark) .shimmer-text {
+  color: rgba(0, 0, 0, 0.1);
+  background: linear-gradient(
+    90deg,
+    transparent 20%,
+    rgba(0, 0, 0, 0.7) 50%,
+    transparent 80%
+  );
+  background-size: 150% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
 }
 
 @keyframes pulse-subtle {
