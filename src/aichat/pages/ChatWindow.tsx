@@ -1033,13 +1033,26 @@ function ChatWindow() {
                             );
                           }
                           
-                          // Fallback if no traces
+                          // Fallback if no traces - check if tool is still running
                           const content = message.content as any;
                           const toolName = content.name || 'Tool';
+                          const toolCallId = content.tool_call_id;
+                          
+                          // Check if this tool_call has a corresponding tool_result
+                          const hasResult = memoizedMessages.some(
+                            m => m.role === 'tool_result' && 
+                            typeof m.content === 'object' && 
+                            (m.content as any)?.tool_call_id === toolCallId
+                          );
+                          
+                          // Tool is running if: we're getting a response AND this is the last tool_call AND no result yet
+                          const isLastToolCall = !memoizedMessages.slice(index + 1).some(m => m.role === 'tool_call');
+                          const isRunning = gettingResponse && isLastToolCall && !hasResult;
+                          
                           return (
                             <div key={index} className="pt-3 pl-5 pr-3 text-sm flex items-center gap-2">
-                              <span className="inline-flex rounded-full h-2 w-2 bg-green-500 animate-pulse"></span>
-                              {gettingResponse ? (
+                              <span className={`inline-flex rounded-full h-2 w-2 ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-zinc-500'}`}></span>
+                              {isRunning ? (
                                 <>
                                   <style>{`
                                     @keyframes shimmer-sweep {
