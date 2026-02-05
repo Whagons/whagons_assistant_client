@@ -3,14 +3,11 @@
 
 FROM node:20-slim AS builder
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
 WORKDIR /app
 
 # Copy package files and install deps
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copy source and config
 COPY . .
@@ -24,7 +21,7 @@ ENV VITE_AUTH_PROVIDER="microsoft"
 ENV VITE_AUTH_TENANT="novastone-ca.com"
 
 # Build
-RUN pnpm run build
+RUN npm run build
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine

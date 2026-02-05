@@ -6,14 +6,11 @@
 # Stage 1: Build the frontend
 FROM node:20-slim AS builder
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
 WORKDIR /app
 
 # Install root deps (yaml parser for apply-config)
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copy configs, scripts, defaults, and web
 COPY configs/whagons5-widget ./config
@@ -22,10 +19,10 @@ COPY defaults ./defaults
 COPY web ./web
 
 # Install web deps
-RUN cd web && pnpm install --frozen-lockfile
+RUN cd web && npm ci
 
 # Apply config + build
-RUN pnpm run build
+RUN npm run build
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine
