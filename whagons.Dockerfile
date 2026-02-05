@@ -3,11 +3,14 @@
 
 FROM node:20-slim AS builder
 
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 WORKDIR /app
 
 # Copy package files and install deps
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 # Copy source and config
 COPY . .
@@ -16,7 +19,7 @@ COPY configs/whagons/favicon.ico ./src/assets/favicon.ico
 COPY configs/whagons/logo.svg ./src/assets/logo.svg
 
 # Build
-RUN npm run build
+RUN pnpm run build
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine
