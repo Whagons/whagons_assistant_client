@@ -234,7 +234,9 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
             {/* Line connects from first dot center to last dot center */}
             {visibleOps.length > 1 && (
               <div 
-                className="absolute left-[4px] w-0.5 bg-zinc-400 dark:bg-zinc-500 origin-top transition-all duration-300 ease-out" 
+                className={`absolute left-[4px] w-0.5 origin-top transition-all duration-300 ease-out ${
+                  hasActiveTraces ? 'bg-zinc-600 dark:bg-zinc-300' : 'bg-zinc-400 dark:bg-zinc-500'
+                }`}
                 style={{
                   top: '20px', // Center of first dot (py-2 = 8px + half of dot 5px + some offset)
                   bottom: '20px', // Center of last dot
@@ -256,6 +258,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
                     isShimmering={isLastAndActive}
                     isFading={isFirstAndFading}
                     isNew={isNew}
+                    hasActiveTraces={hasActiveTraces}
                   />
                 );
               })}
@@ -284,6 +287,7 @@ interface OperationItemProps {
   isShimmering?: boolean;
   isFading?: boolean;
   isNew?: boolean;
+  hasActiveTraces?: boolean;
 }
 
 /**
@@ -325,8 +329,7 @@ function toTriedLabel(label: string): string {
 /**
  * Single operation in the timeline with animation support
  */
-function OperationItem({ operation, isShimmering, isFading, isNew }: OperationItemProps) {
-  const isActive = operation.status === 'active';
+function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTraces }: OperationItemProps) {
   const isError = operation.status === 'error';
 
   // Show start label while active, end label when done, "Tried..." for errors
@@ -399,11 +402,11 @@ function OperationItem({ operation, isShimmering, isFading, isNew }: OperationIt
         }
       `}</style>
       
-      {/* Timeline dot - orange for error, active stands out more (darker in light, lighter in dark) */}
+      {/* Timeline dot - orange for error, all same color based on whether ANY trace is active */}
       <div className="absolute -left-5 top-1/2 -translate-y-1/2">
         <span className={`block rounded-full w-2.5 h-2.5 ${
           isError ? 'bg-orange-500' : 
-          isActive ? 'bg-zinc-600 dark:bg-zinc-300' : 
+          hasActiveTraces ? 'bg-zinc-600 dark:bg-zinc-300' : 
           'bg-zinc-400 dark:bg-zinc-500'
         } ${isNew ? 'animate-dot-emerge' : ''}`} />
       </div>
