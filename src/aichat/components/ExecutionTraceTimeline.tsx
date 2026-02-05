@@ -286,26 +286,6 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
           {/* Timeline container with connecting line */}
           <div className="relative pl-5">
             <style>{`
-              @keyframes line-grow {
-                from { transform: scaleY(0); }
-                to { transform: scaleY(1); }
-              }
-            `}</style>
-            {/* Vertical connecting line - only show if more than 1 item, starts/ends at dot centers */}
-            {/* Line connects from first dot center to last dot center */}
-            {visibleOps.length > 1 && (
-              <div 
-                className={`absolute left-[4px] w-0.5 origin-top transition-all duration-300 ease-out ${
-                  hasActiveTraces ? 'bg-zinc-600 dark:bg-zinc-300' : 'bg-zinc-400 dark:bg-zinc-500'
-                }`}
-                style={{
-                  top: '20px', // Center of first dot (py-2 = 8px + half of dot 5px + some offset)
-                  bottom: '20px', // Center of last dot
-                }}
-              />
-            )}
-            
-            <style>{`
               .slide-container {
                 transition: transform 0.3s ease-out;
               }
@@ -334,6 +314,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
                     isFading={isFirstAndFading}
                     isNew={isNew}
                     hasActiveTraces={hasActiveTraces}
+                    isFirst={index === 0}
                   />
                 );
               })}
@@ -364,6 +345,7 @@ interface OperationItemProps {
   isNew?: boolean;
   hasActiveTraces?: boolean;
   isSlidingOut?: boolean;
+  isFirst?: boolean;
 }
 
 /**
@@ -405,7 +387,7 @@ function toTriedLabel(label: string): string {
 /**
  * Single operation in the timeline with animation support
  */
-function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTraces, isSlidingOut }: OperationItemProps) {
+function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTraces, isSlidingOut, isFirst }: OperationItemProps) {
   const isActive = operation.status === 'active';
   const isError = operation.status === 'error';
 
@@ -447,9 +429,6 @@ function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTrac
             transform: scale(0);
             opacity: 0;
           }
-          50% {
-            transform: scale(1.3);
-          }
           100% {
             transform: scale(1);
             opacity: 1;
@@ -477,7 +456,31 @@ function OperationItem({ operation, isShimmering, isFading, isNew, hasActiveTrac
           animation: text-emerge 0.4s ease-out 0.15s forwards;
           opacity: 0;
         }
+        @keyframes line-grow-down {
+          0% {
+            transform: scaleY(0);
+          }
+          100% {
+            transform: scaleY(1);
+          }
+        }
+        .animate-line-grow {
+          animation: line-grow-down 0.3s ease-out forwards;
+        }
       `}</style>
+      
+      {/* Line segment connecting from previous dot (not on first item) */}
+      {!isFirst && (
+        <div 
+          className={`absolute -left-[15px] w-0.5 origin-top ${
+            hasActiveTraces ? 'bg-zinc-600 dark:bg-zinc-300' : 'bg-zinc-400 dark:bg-zinc-500'
+          } ${isNew ? 'animate-line-grow' : ''}`}
+          style={{
+            top: '-8px',
+            height: '16px',
+          }}
+        />
+      )}
       
       {/* Timeline dot - orange for error, all same color based on whether ANY trace is active */}
       <div className="absolute -left-5 top-1/2 -translate-y-1/2">
