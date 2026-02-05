@@ -6,6 +6,12 @@ import { toast } from "sonner";
 
 const HOST = import.meta.env.VITE_CHAT_HOST;
 
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  timestamp: number;
+}
+
 interface ChatInputProps {
   // Revert onSubmit to expect the internal ContentItem format
   onSubmit: (content: string | ContentItem[]) => void;
@@ -13,6 +19,11 @@ interface ChatInputProps {
   setIsListening?: (isListening: boolean) => void;
   handleStopRequest: () => void;
   conversationId: string;
+  // Message queue support
+  messageQueue: QueuedMessage[];
+  onQueueMessage: (message: QueuedMessage) => void;
+  onRemoveFromQueue: (id: string) => void;
+  onClearQueue: () => void;
 }
 
 const isImageData = (content: any): content is ImageData => {
@@ -305,12 +316,31 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
     if (hasUploadingItems || uploadingSignal) {
       return;
     }
-    if (props.gettingResponse) {
-      return;
-    }
 
     const currentText = textInput.trim();
     const currentContent = content;
+
+    // If agent is busy, queue text-only messages
+    if (props.gettingResponse) {
+      if (currentText && currentContent.length === 0) {
+        // Add to queue instead of sending
+        const queuedMessage: QueuedMessage = {
+          id: crypto.randomUUID(),
+          text: currentText,
+          timestamp: Date.now(),
+        };
+        props.onQueueMessage(queuedMessage);
+        setTextInput("");
+        // Clear draft from localStorage
+        try { localStorage.removeItem(INPUT_DRAFT_KEY); } catch {}
+        // Reset textarea height
+        if (textInputRef.current) {
+          textInputRef.current.style.height = '56px';
+        }
+      }
+      // Can't queue file attachments while agent is busy
+      return;
+    }
 
     if (currentText || currentContent.length > 0) {
       if (currentText && currentContent.length === 0) {
@@ -413,6 +443,44 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Message Queue Display */}
+      {props.messageQueue.length > 0 && (
+        <div className="px-3 pb-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">Queued</span>
+            {props.messageQueue.length > 1 && (
+              <button
+                type="button"
+                onClick={props.onClearQueue}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {props.messageQueue.map((queuedMsg) => (
+              <div
+                key={queuedMsg.id}
+                className="group flex items-center gap-2 bg-secondary/50 text-foreground px-3 py-2 rounded-lg text-sm border border-border/50"
+              >
+                <span className="flex-1 truncate">{queuedMsg.text}</span>
+                <button
+                  type="button"
+                  onClick={() => props.onRemoveFromQueue(queuedMsg.id)}
+                  className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  title="Remove from queue"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div
         className={`flex-1 border border-transparent ${
           isDragging
@@ -517,10 +585,10 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
               }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder="Type your message here..."
+              placeholder={props.gettingResponse ? "Type to queue message..." : "Type your message here..."}
               autoComplete="off"
               spellCheck={false}
-              disabled={isUploading() || props.gettingResponse}
+              disabled={isUploading()}
             />
 
             {/* Bottom toolbar flush with container bottom */}
@@ -602,9 +670,9 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
 
                 <button
                   type="button"
-                  title="Attach file"
+                  title={props.gettingResponse ? "Can't attach files while agent is running" : "Attach file"}
                   onClick={() => fileInputRef.current?.click()}
-                  className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                  className={`rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 ${props.gettingResponse ? 'opacity-50 cursor-not-allowed' : ''}`}
                   disabled={isUploading() || props.gettingResponse}
                 >
                   <i className="fas fa-paperclip"></i>
@@ -613,7 +681,7 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
                   type="button"
                   title="Search"
                   className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-                  disabled={isUploading() || props.gettingResponse}
+                  disabled={isUploading()}
                 >
                   <i className="fas fa-globe"></i>
                 </button>
@@ -621,7 +689,7 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
                   type="button"
                   title="Extensions"
                   className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-                  disabled={isUploading() || props.gettingResponse}
+                  disabled={isUploading()}
                 >
                   <i className="fas fa-plug"></i>
                 </button>

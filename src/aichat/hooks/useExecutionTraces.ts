@@ -16,6 +16,10 @@ export function useExecutionTraces() {
   
   // Track active tool calls
   const activeTraceIds = useRef<Set<string>>(new Set());
+  
+  // Ref to access current traces without adding to dependency arrays
+  const tracesRef = useRef<Map<string, ToolCallTraces>>(traces);
+  tracesRef.current = traces;
 
   /**
    * Process an incoming trace event
@@ -121,7 +125,9 @@ export function useExecutionTraces() {
    * Also synthesizes traces from tool_call/tool_result messages for regular tools
    */
   const loadTracesFromAPI = useCallback(async (conversationId: string, messages?: Message[]) => {
-    const newTraceMap = new Map<string, ToolCallTraces>();
+    // Start with existing traces to preserve real-time traces that arrived via WebSocket
+    // Use ref to avoid adding traces to dependency array (would cause infinite loops)
+    const newTraceMap = new Map<string, ToolCallTraces>(tracesRef.current);
 
     // First, try to load persisted traces from API (TypeScript executor internal traces)
     try {

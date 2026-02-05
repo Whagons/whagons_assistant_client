@@ -8,7 +8,7 @@ import { ContentItem, Message, ImageData, PdfData } from "../models/models";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useChatContext } from "@/layout";
 import { useNavigate, useParams } from "react-router-dom";
-import ChatInput from "../components/ChatInput";
+import ChatInput, { QueuedMessage } from "../components/ChatInput";
 import MessageItem from "../components/ChatMessageItem";
 import { MessageCache } from "../utils/memory_cache";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -74,6 +74,9 @@ function ChatWindow() {
   
   // History warnings state (for model compatibility warnings when switching models)
   const [historyWarnings, setHistoryWarnings] = useState<Array<{type: string; message: string; details: string}>>([]);
+  
+  // Message queue state (for queueing messages while agent is running)
+  const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   
   // Toggle for legacy tool visualization vs trace-based
   // Default to trace-based visualization (useLegacyToolViz = false)
@@ -853,6 +856,39 @@ function ChatWindow() {
     }
   };
 
+  // Message queue management
+  const handleQueueMessage = useCallback((message: QueuedMessage) => {
+    setMessageQueue(prev => [...prev, message]);
+  }, []);
+
+  const handleRemoveFromQueue = useCallback((id: string) => {
+    setMessageQueue(prev => prev.filter(msg => msg.id !== id));
+  }, []);
+
+  const handleClearQueue = useCallback(() => {
+    setMessageQueue([]);
+  }, []);
+
+  // Process queued messages when agent finishes
+  const prevGettingResponseRef = useRef(gettingResponse);
+  useEffect(() => {
+    // Detect transition from gettingResponse=true to gettingResponse=false
+    if (prevGettingResponseRef.current && !gettingResponse && messageQueue.length > 0) {
+      // Combine all queued messages into one
+      const combinedText = messageQueue.map(msg => msg.text).join('\n\n');
+      console.log('[Queue] Processing queued messages:', messageQueue.length, 'combined length:', combinedText.length);
+      
+      // Clear the queue
+      setMessageQueue([]);
+      
+      // Send the combined message after a small delay to let UI settle
+      setTimeout(() => {
+        handleSubmit(combinedText);
+      }, 100);
+    }
+    prevGettingResponseRef.current = gettingResponse;
+  }, [gettingResponse, messageQueue, handleSubmit]);
+
   return (
     <div className="flex w-full h-full flex-col justify-between z-5 bg-background rounded-lg">
       {/* Confirmation Dialog for Confirm_With_User tool */}
@@ -1062,6 +1098,10 @@ function ChatWindow() {
           setIsListening={() => {}}
           handleStopRequest={handleStopRequest}
           conversationId={conversationId}
+          messageQueue={messageQueue}
+          onQueueMessage={handleQueueMessage}
+          onRemoveFromQueue={handleRemoveFromQueue}
+          onClearQueue={handleClearQueue}
         />
       </div>
     </div>
