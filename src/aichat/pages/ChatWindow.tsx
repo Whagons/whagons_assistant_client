@@ -17,9 +17,11 @@ import { createWSManager } from "../utils/ws";
 import ToolMessageRenderer, { ToolCallMap } from "../components/ToolMessageRenderer";
 import NewChat from "../components/NewChat";
 import { processFrontendTool, isFrontendTool } from "../utils/frontend_tools";
-import { handleFrontendToolPromptMessage } from "../utils/frontend_tool_prompts";
+import { handleFrontendToolPromptMessage, ConfirmationRequest } from "../utils/frontend_tool_prompts";
 import { useExecutionTraces } from "../hooks/useExecutionTraces";
 import ExecutionTraceTimeline from "../components/ExecutionTraceTimeline";
+import ConfirmationDialog from "../components/ConfirmationDialog";
+import HistoryWarningBanner from "../components/HistoryWarningBanner";
 
 // Component to render user message content
 
@@ -66,6 +68,12 @@ function ChatWindow() {
 
   // Execution trace management (for real-time TypeScript execution visualization)
   const { traces, handleTrace, clearTraces, hasActiveTraces, loadTracesFromAPI } = useExecutionTraces();
+  
+  // Confirmation dialog state (for Confirm_With_User tool)
+  const [confirmationRequest, setConfirmationRequest] = useState<ConfirmationRequest | null>(null);
+  
+  // History warnings state (for model compatibility warnings when switching models)
+  const [historyWarnings, setHistoryWarnings] = useState<Array<{type: string; message: string; details: string}>>([]);
   
   // Toggle for legacy tool visualization vs trace-based
   // Default to trace-based visualization (useLegacyToolViz = false)
@@ -481,11 +489,38 @@ function ChatWindow() {
         return; // Don't process as chat message - traces are non-semantic
       }
       
+      // Handle history warnings (when model adapts conversation history and some content is filtered)
+      // These appear when switching between models with incompatible features (e.g., images, files)
+      if (data.type === "history_warnings") {
+        console.log('[ChatWindow] History warnings:', data.warnings);
+        setHistoryWarnings(data.warnings || []);
+        // Auto-dismiss warnings after 10 seconds
+        setTimeout(() => setHistoryWarnings([]), 10000);
+        return;
+      }
+      
       // Handle frontend tool prompts (tool-specific messages, not chat content)
       if (data.type === "frontend_tool_prompt") {
-        handleFrontendToolPromptMessage(data, (payload) => {
-          wsManager.send(currentConversationId, payload);
-        });
+        handleFrontendToolPromptMessage(
+          data,
+          (payload) => {
+            wsManager.send(currentConversationId, payload);
+          },
+          // Callback for showing confirmation dialogs
+          (request) => {
+            setConfirmationRequest({
+              ...request,
+              onConfirm: () => {
+                request.onConfirm();
+                setConfirmationRequest(null);
+              },
+              onCancel: () => {
+                request.onCancel();
+                setConfirmationRequest(null);
+              },
+            });
+          }
+        );
         return; // Don't process as chat message
       }
       
@@ -820,6 +855,23 @@ function ChatWindow() {
 
   return (
     <div className="flex w-full h-full flex-col justify-between z-5 bg-background rounded-lg">
+      {/* Confirmation Dialog for Confirm_With_User tool */}
+      <ConfirmationDialog
+        open={confirmationRequest !== null}
+        title={confirmationRequest?.title}
+        message={confirmationRequest?.message || ""}
+        confirmLabel={confirmationRequest?.confirmLabel}
+        cancelLabel={confirmationRequest?.cancelLabel}
+        onConfirm={() => confirmationRequest?.onConfirm()}
+        onCancel={() => confirmationRequest?.onCancel()}
+      />
+      
+      {/* History warnings banner (shown when switching between models with incompatible features) */}
+      <HistoryWarningBanner
+        warnings={historyWarnings}
+        onDismiss={() => setHistoryWarnings([])}
+      />
+      
       {/* Main Content Area: Takes full width, allows vertical flex. NO CENTERING HERE. */}
       <div className="flex-1 w-full overflow-hidden flex flex-col">
         {/* Show existing chat content OR NewChat component in fallback */}

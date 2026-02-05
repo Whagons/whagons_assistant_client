@@ -7,27 +7,23 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Makes an authenticated fetch request by adding the Firebase auth token to headers
+ * Authenticated fetch wrapper.
+ * Uses Firebase auth token for authorization.
  */
-export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const user = auth.currentUser;
+export async function authFetch(
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const headers = new Headers(options.headers);
   
-  if (!user) {
-    throw new Error('User not authenticated');
+  const user = auth.currentUser;
+  if (user) {
+    const token = await user.getIdToken();
+    headers.set("Authorization", `Bearer ${token}`);
   }
   
-  // Get the ID token from the current user
-  const token = await user.getIdToken();
-  
-  // Add the Authorization header to the options
-  const authOptions: RequestInit = {
+  return fetch(url, {
     ...options,
-    headers: {
-      ...options.headers,
-      'Authorization': `Bearer ${token}`
-    }
-  };
-  
-  // Make the request with the auth token
-  return fetch(url, authOptions);
+    headers,
+  });
 }
