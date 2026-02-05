@@ -442,36 +442,20 @@ textarea.overflow-y-hidden {
   }
 }
 
-/* Light mode shimmer - dark text on light background */
+/* Shimmer text effect - sweeping light beam */
 .shimmer-text {
-  background: linear-gradient(
-    90deg,
-    rgba(0, 0, 0, 0.15) 20%,
-    rgba(0, 0, 0, 0.8) 50%,
-    rgba(0, 0, 0, 0.15) 80%
-  );
-  background-size: 150% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  animation: shimmer 0.8s linear infinite;
-}
-
-/* Dark mode shimmer - white text on dark background */
-.dark .shimmer-text,
-body.dark .shimmer-text {
   background: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.15) 20%,
     rgba(255, 255, 255, 0.9) 50%,
     rgba(255, 255, 255, 0.15) 80%
-  );
-  background-size: 150% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
+  ) !important;
+  background-size: 150% 100% !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  animation: shimmer 0.8s linear infinite !important;
 }
 
 @keyframes pulse-subtle {
