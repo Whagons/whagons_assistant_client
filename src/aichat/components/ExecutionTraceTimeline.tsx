@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { ExecutionTrace, ToolCallTraces } from '../models/traces';
 
 const MAX_VISIBLE_ITEMS = 5;
@@ -19,6 +19,10 @@ interface ExecutionTraceTimelineProps {
  */
 function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: ExecutionTraceTimelineProps) {
   const [isExpanded, setIsExpanded] = useState(initialExpanded ?? true);
+  
+  // Track which operation IDs we've seen to detect new ones
+  const seenOperationIds = useRef<Set<string>>(new Set());
+  const [newOperationIds, setNewOperationIds] = useState<Set<string>>(new Set());
 
   // Determine if any trace is still active
   const hasActiveTraces = useMemo(() => {
@@ -131,6 +135,28 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
     return ops.sort((a, b) => a.timestamp - b.timestamp);
   }, [traces]);
 
+  // Track new operations for animation
+  useEffect(() => {
+    const currentIds = new Set(operations.map(op => op.id));
+    const newIds = new Set<string>();
+    
+    for (const id of currentIds) {
+      if (!seenOperationIds.current.has(id)) {
+        newIds.add(id);
+        seenOperationIds.current.add(id);
+      }
+    }
+    
+    if (newIds.size > 0) {
+      setNewOperationIds(newIds);
+      // Clear "new" status after animation completes
+      const timer = setTimeout(() => {
+        setNewOperationIds(new Set());
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [operations]);
+
   if (operations.length === 0) {
     return null;
   }
@@ -138,8 +164,6 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
   // Get visible operations (last MAX_VISIBLE_ITEMS)
   const visibleOps = operations.slice(-MAX_VISIBLE_ITEMS);
   const hiddenCount = Math.max(0, operations.length - MAX_VISIBLE_ITEMS);
-  
-
 
   // Count for header
   const completedCount = operations.filter(op => op.status === 'end').length;
@@ -199,11 +223,17 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
           
           {/* Timeline container with connecting line */}
           <div className="relative pl-5">
+            <style>{`
+              @keyframes line-grow {
+                from { transform: scaleY(0); }
+                to { transform: scaleY(1); }
+              }
+            `}</style>
             {/* Vertical connecting line - only show if more than 1 item, starts/ends at dot centers */}
             {/* Line connects from first dot center to last dot center */}
             {visibleOps.length > 1 && (
               <div 
-                className="absolute left-[4px] w-0.5 bg-zinc-500" 
+                className="absolute left-[4px] w-0.5 bg-zinc-500 origin-top transition-all duration-300 ease-out" 
                 style={{
                   top: '20px', // Center of first dot (py-2 = 8px + half of dot 5px + some offset)
                   bottom: '20px', // Center of last dot
@@ -216,6 +246,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
                 const isFirstAndFading = index === 0 && operations.length > MAX_VISIBLE_ITEMS;
                 // Shimmer only the LAST item if it's active (the currently running one)
                 const isLastAndActive = index === visibleOps.length - 1 && op.status === 'active';
+                const isNew = newOperationIds.has(op.id);
                 
                 return (
                   <OperationItem 
@@ -223,6 +254,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
                     operation={op} 
                     isShimmering={isLastAndActive}
                     isFading={isFirstAndFading}
+                    isNew={isNew}
                   />
                 );
               })}
@@ -250,6 +282,7 @@ interface OperationItemProps {
   operation: OperationDisplay;
   isShimmering?: boolean;
   isFading?: boolean;
+  isNew?: boolean;
 }
 
 /**
@@ -291,7 +324,7 @@ function toTriedLabel(label: string): string {
 /**
  * Single operation in the timeline with animation support
  */
-function OperationItem({ operation, isShimmering, isFading }: OperationItemProps) {
+function OperationItem({ operation, isShimmering, isFading, isNew }: OperationItemProps) {
   const isActive = operation.status === 'active';
   const isError = operation.status === 'error';
 
@@ -309,48 +342,93 @@ function OperationItem({ operation, isShimmering, isFading }: OperationItemProps
     <div 
       className={`
         relative flex items-center gap-2 text-sm py-2
-        transition-all duration-300 ease-out
-        animate-slide-up
         ${isFading ? 'opacity-30' : 'opacity-100'}
+        ${isNew ? 'animate-trace-appear' : ''}
       `}
     >
-      {/* Timeline dot - green+pulse for active, orange for error, zinc for done */}
+      <style>{`
+        @keyframes shimmer-sweep {
+          0% { background-position: -150% 0; }
+          100% { background-position: 150% 0; }
+        }
+        @keyframes trace-appear {
+          0% {
+            opacity: 0;
+            transform: translateY(-20px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes dot-emerge {
+          0% {
+            transform: scale(0) translateY(-10px);
+            opacity: 0;
+          }
+          50% {
+            transform: scale(1.2) translateY(0);
+          }
+          100% {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+          }
+        }
+        @keyframes text-emerge {
+          0% {
+            opacity: 0;
+            transform: translateX(-10px);
+            clip-path: inset(0 100% 0 0);
+          }
+          100% {
+            opacity: 1;
+            transform: translateX(0);
+            clip-path: inset(0 0 0 0);
+          }
+        }
+        .animate-trace-appear {
+          animation: trace-appear 0.3s ease-out forwards;
+        }
+        .animate-dot-emerge {
+          animation: dot-emerge 0.3s ease-out forwards;
+        }
+        .animate-text-emerge {
+          animation: text-emerge 0.4s ease-out 0.15s forwards;
+          opacity: 0;
+        }
+      `}</style>
+      
+      {/* Timeline dot - orange for error, zinc for all others */}
       <div className="absolute -left-5 top-1/2 -translate-y-1/2">
         <span className={`block rounded-full w-2.5 h-2.5 ${
-          isError ? 'bg-orange-500' : 
-          isActive ? 'bg-green-500 animate-pulse' : 
-          'bg-zinc-500'
-        }`} />
+          isError ? 'bg-orange-500' : 'bg-zinc-500'
+        } ${isNew ? 'animate-dot-emerge' : ''}`} />
       </div>
 
       {/* Label with shimmer for active, muted for done, orange for errors */}
       {isShimmering ? (
-        <>
-          <style>{`
-            @keyframes shimmer-sweep {
-              0% { background-position: -150% 0; }
-              100% { background-position: 150% 0; }
-            }
-          `}</style>
-          <span 
-            className="flex-1 min-w-0 truncate"
-            style={{
-              color: 'rgba(255, 255, 255, 0.1)',
-              background: 'linear-gradient(90deg, transparent 20%, rgba(255, 255, 255, 0.8) 50%, transparent 80%)',
-              backgroundSize: '150% 100%',
-              WebkitBackgroundClip: 'text',
-              backgroundClip: 'text',
-              animation: 'shimmer-sweep 0.8s linear infinite',
-            }}
-          >
-            {displayLabel}
-          </span>
-        </>
+        <span 
+          className={`flex-1 min-w-0 truncate ${isNew ? 'animate-text-emerge' : ''}`}
+          style={{
+            color: 'rgba(255, 255, 255, 0.1)',
+            background: 'linear-gradient(90deg, transparent 20%, rgba(255, 255, 255, 0.8) 50%, transparent 80%)',
+            backgroundSize: '150% 100%',
+            WebkitBackgroundClip: 'text',
+            backgroundClip: 'text',
+            animation: isNew 
+              ? 'text-emerge 0.4s ease-out 0.15s forwards, shimmer-sweep 0.8s linear 0.55s infinite'
+              : 'shimmer-sweep 0.8s linear infinite',
+            opacity: isNew ? 0 : undefined,
+          }}
+        >
+          {displayLabel}
+        </span>
       ) : (
         <span 
           className={`
             flex-1 min-w-0 truncate
             ${isError ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}
+            ${isNew ? 'animate-text-emerge' : ''}
           `}
         >
           {displayLabel}
@@ -359,7 +437,7 @@ function OperationItem({ operation, isShimmering, isFading }: OperationItemProps
 
       {/* Duration */}
       {operation.duration_ms !== undefined && operation.duration_ms > 0 && (
-        <span className="text-xs text-muted-foreground/70 tabular-nums">
+        <span className={`text-xs text-muted-foreground/70 tabular-nums ${isNew ? 'animate-text-emerge' : ''}`}>
           {operation.duration_ms < 1000 
             ? `${operation.duration_ms}ms` 
             : `${(operation.duration_ms / 1000).toFixed(1)}s`}
