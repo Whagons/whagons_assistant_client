@@ -908,6 +908,11 @@ function ChatWindow() {
         onDismiss={() => setHistoryWarnings([])}
       />
       
+      {/* Debug traces panel - shows mock traces for styling when VITE_DEBUG_TRACES=true */}
+      {import.meta.env.VITE_DEBUG_TRACES === 'true' && (
+        <DebugTracesPanel />
+      )}
+      
       {/* Main Content Area: Takes full width, allows vertical flex. NO CENTERING HERE. */}
       <div className="flex-1 w-full overflow-hidden flex flex-col">
         {/* Show existing chat content OR NewChat component in fallback */}
@@ -1135,6 +1140,212 @@ function ChatWindow() {
           onRemoveFromQueue={handleRemoveFromQueue}
           onClearQueue={handleClearQueue}
         />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Debug panel for styling tool traces without needing to send real messages
+ * Only shown when VITE_DEBUG_TRACES=true
+ */
+function DebugTracesPanel() {
+  const [mockTraces, setMockTraces] = useState<Map<string, any>>(new Map());
+  const [isRunning, setIsRunning] = useState(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startMockTraces = () => {
+    setIsRunning(true);
+    const toolCallId = `debug_${Date.now()}`;
+    const now = Date.now();
+    
+    // Initial trace - start executing code
+    setMockTraces(new Map([[toolCallId, {
+      tool_call_id: toolCallId,
+      traces: [{
+        type: 'execution_trace',
+        trace_id: `${toolCallId}_main`,
+        tool_call_id: toolCallId,
+        tool: 'code',
+        operation: 'Execute_TypeScript',
+        status: 'start',
+        label: 'Executing code',
+        timestamp: now,
+      }],
+      isActive: true,
+      startTime: now,
+    }]]));
+
+    // Simulate trace progression
+    let step = 0;
+    intervalRef.current = setInterval(() => {
+      step++;
+      const stepTime = now + step * 800;
+      
+      setMockTraces(prev => {
+        const newMap = new Map(prev);
+        const existing = newMap.get(toolCallId);
+        if (!existing) return prev;
+        
+        const newTraces = [...existing.traces];
+        
+        if (step === 1) {
+          // Start search
+          newTraces.push({
+            type: 'execution_trace',
+            trace_id: `${toolCallId}_search`,
+            tool_call_id: toolCallId,
+            tool: 'tavily',
+            operation: 'search',
+            status: 'start',
+            label: 'Searching: "chicago bears"',
+            timestamp: stepTime,
+          });
+        } else if (step === 2) {
+          // Search progress
+          newTraces.push({
+            type: 'execution_trace',
+            trace_id: `${toolCallId}_search`,
+            tool_call_id: toolCallId,
+            tool: 'tavily',
+            operation: 'search',
+            status: 'progress',
+            label: 'Querying search index...',
+            timestamp: stepTime,
+          });
+        } else if (step === 3) {
+          // Search end
+          newTraces.push({
+            type: 'execution_trace',
+            trace_id: `${toolCallId}_search`,
+            tool_call_id: toolCallId,
+            tool: 'tavily',
+            operation: 'search',
+            status: 'end',
+            label: 'Found 5 results',
+            timestamp: stepTime,
+            duration_ms: 1600,
+          });
+        } else if (step === 4) {
+          // Start math
+          newTraces.push({
+            type: 'execution_trace',
+            trace_id: `${toolCallId}_math`,
+            tool_call_id: toolCallId,
+            tool: 'math',
+            operation: 'evaluate',
+            status: 'start',
+            label: 'Evaluating: 2 + 2 * 3 - 8 / 4',
+            timestamp: stepTime,
+          });
+        } else if (step === 5) {
+          // Math end
+          newTraces.push({
+            type: 'execution_trace',
+            trace_id: `${toolCallId}_math`,
+            tool_call_id: toolCallId,
+            tool: 'math',
+            operation: 'evaluate',
+            status: 'end',
+            label: 'Result: 6',
+            timestamp: stepTime,
+            duration_ms: 50,
+          });
+        } else if (step === 6) {
+          // Main execution end
+          newTraces.push({
+            type: 'execution_trace',
+            trace_id: `${toolCallId}_main`,
+            tool_call_id: toolCallId,
+            tool: 'code',
+            operation: 'Execute_TypeScript',
+            status: 'end',
+            label: 'Executed code',
+            timestamp: stepTime,
+            duration_ms: 4800,
+          });
+          
+          // Stop interval
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          setIsRunning(false);
+        }
+        
+        newMap.set(toolCallId, {
+          ...existing,
+          traces: newTraces,
+          isActive: step < 6,
+          endTime: step >= 6 ? stepTime : undefined,
+        });
+        
+        return newMap;
+      });
+    }, 800);
+  };
+
+  const stopMockTraces = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setIsRunning(false);
+  };
+
+  const clearMockTraces = () => {
+    stopMockTraces();
+    setMockTraces(new Map());
+  };
+
+  return (
+    <div className="border-b border-border bg-yellow-500/10 p-4">
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center gap-4 mb-4">
+          <span className="text-sm font-medium text-yellow-600 dark:text-yellow-400">DEBUG TRACES</span>
+          <button
+            onClick={isRunning ? stopMockTraces : startMockTraces}
+            className={`px-3 py-1 text-sm rounded ${isRunning ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}
+          >
+            {isRunning ? 'Stop' : 'Start Mock Traces'}
+          </button>
+          <button
+            onClick={clearMockTraces}
+            className="px-3 py-1 text-sm rounded bg-gray-500 text-white"
+          >
+            Clear
+          </button>
+        </div>
+        
+        {/* Show the fallback tool display (green dot + shimmer) */}
+        <div className="mb-4 p-3 bg-background rounded border border-border">
+          <div className="text-xs text-muted-foreground mb-2">Fallback Display (no traces):</div>
+          <div className="pt-3 pl-5 pr-3 text-sm flex items-center gap-2">
+            <span className="inline-flex rounded-full h-2 w-2 bg-green-500 animate-pulse"></span>
+            <style>{`
+              @keyframes shimmer-sweep {
+                0% { background-position: -150% 0; }
+                100% { background-position: 150% 0; }
+              }
+            `}</style>
+            <span style={{
+              color: 'rgba(255, 255, 255, 0.1)',
+              background: 'linear-gradient(90deg, transparent 20%, rgba(255, 255, 255, 0.8) 50%, transparent 80%)',
+              backgroundSize: '150% 100%',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              animation: 'shimmer-sweep 0.8s linear infinite',
+            }}>Search</span>
+          </div>
+        </div>
+        
+        {/* Show ExecutionTraceTimeline with mock traces */}
+        {mockTraces.size > 0 && (
+          <div className="p-3 bg-background rounded border border-border">
+            <div className="text-xs text-muted-foreground mb-2">ExecutionTraceTimeline:</div>
+            <ExecutionTraceTimeline traces={mockTraces} isExpanded={true} />
+          </div>
+        )}
       </div>
     </div>
   );
