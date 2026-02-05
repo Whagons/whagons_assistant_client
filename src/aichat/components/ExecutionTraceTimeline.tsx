@@ -28,6 +28,7 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
   // For slide animation: show MAX+1 items, animate slide, then trim
   const [isSliding, setIsSliding] = useState(false);
   const [showExtraItem, setShowExtraItem] = useState(false);
+  const [noTransition, setNoTransition] = useState(false);
 
   // Determine if any trace is still active
   const hasActiveTraces = useMemo(() => {
@@ -160,16 +161,23 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
     const isAddingNew = newIds.size > 0;
     
     if (wasAtMax && isAddingNew) {
-      // Step 1: Show extra item (MAX+1 visible)
+      // Step 1: Show extra item (MAX+1 visible) and start sliding immediately
       setShowExtraItem(true);
-      // Step 2: Start slide animation
-      requestAnimationFrame(() => {
-        setIsSliding(true);
-      });
-      // Step 3: After animation, hide extra item and stop sliding
-      const timer = setTimeout(() => {
+      setIsSliding(true);
+      setNoTransition(false);
+      
+      // Step 2: After slide animation completes (300ms), remove extra item
+      // But first disable transition so removing item doesn't cause snap-back animation
+      const finishTimer = setTimeout(() => {
+        // Disable transition, reset slide state, remove extra item - all at once
+        setNoTransition(true);
         setIsSliding(false);
         setShowExtraItem(false);
+        
+        // Re-enable transition after a frame so next animation works
+        requestAnimationFrame(() => {
+          setNoTransition(false);
+        });
       }, 300);
       
       prevOperationCount.current = operations.length;
@@ -180,11 +188,13 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
           setNewOperationIds(new Set());
         }, 500);
         return () => {
-          clearTimeout(timer);
+          clearTimeout(finishTimer);
           clearTimeout(newTimer);
         };
       }
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(finishTimer);
+      };
     }
     
     prevOperationCount.current = operations.length;
@@ -302,8 +312,11 @@ function ExecutionTraceTimeline({ traces, isExpanded: initialExpanded }: Executi
               .slide-container.sliding {
                 transform: translateY(-36px);
               }
+              .slide-container.no-transition {
+                transition: none;
+              }
             `}</style>
-            <div className={`space-y-0 slide-container ${isSliding ? 'sliding' : ''}`}>
+            <div className={`space-y-0 slide-container ${isSliding ? 'sliding' : ''} ${noTransition ? 'no-transition' : ''}`}>
               {visibleOps.map((op, index) => {
                 // The first item fades out when we're sliding (it's the one being pushed out)
                 const isFadingOut = index === 0 && isSliding;
