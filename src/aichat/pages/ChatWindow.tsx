@@ -1039,7 +1039,26 @@ function ChatWindow() {
                           return (
                             <div key={index} className="pt-3 pl-5 pr-3 text-sm flex items-center gap-2">
                               <span className="inline-flex rounded-full h-2 w-2 bg-green-500 animate-pulse"></span>
-                              <span className={gettingResponse ? 'shimmer-loading' : 'text-muted-foreground'}>{toolName}</span>
+                              {gettingResponse ? (
+                                <>
+                                  <style>{`
+                                    @keyframes shimmer-sweep {
+                                      0% { background-position: -150% 0; }
+                                      100% { background-position: 150% 0; }
+                                    }
+                                  `}</style>
+                                  <span style={{
+                                    color: 'rgba(255, 255, 255, 0.1)',
+                                    background: 'linear-gradient(90deg, transparent 20%, rgba(255, 255, 255, 0.8) 50%, transparent 80%)',
+                                    backgroundSize: '150% 100%',
+                                    WebkitBackgroundClip: 'text',
+                                    backgroundClip: 'text',
+                                    animation: 'shimmer-sweep 0.8s linear infinite',
+                                  }}>{toolName}</span>
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground">{toolName}</span>
+                              )}
                             </div>
                           );
                         }
