@@ -269,8 +269,48 @@ function ToolMessageRenderer({
   // State for copy functionality
   const [copiedCall, setCopiedCall] = useState(false);
   const [copiedResult, setCopiedResult] = useState(false);
+  const [copiedImage, setCopiedImage] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+
+  // Check if result contains an image URL (from Generate_Image tool)
+  const imageInfo = useMemo(() => {
+    if (!parsedToolResultContent) return null;
+    
+    // The Generate_Image tool returns markdown like: ![Generated: prompt](url)
+    // Try multiple possible content locations
+    let content = '';
+    if (typeof parsedToolResultContent === 'string') {
+      content = parsedToolResultContent;
+    } else if (parsedToolResultContent?.content) {
+      content = typeof parsedToolResultContent.content === 'string' 
+        ? parsedToolResultContent.content 
+        : JSON.stringify(parsedToolResultContent.content);
+    } else {
+      content = JSON.stringify(parsedToolResultContent);
+    }
+    
+    console.log('[ToolMessageRenderer] Checking for image in content:', content);
+    
+    // Match markdown image pattern: ![alt](url)
+    const markdownImageMatch = content.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+    if (markdownImageMatch) {
+      console.log('[ToolMessageRenderer] Found image:', markdownImageMatch[1], markdownImageMatch[2]);
+      return {
+        alt: markdownImageMatch[1],
+        url: markdownImageMatch[2],
+      };
+    }
+    
+    return null;
+  }, [parsedToolResultContent]);
+
+  // Auto-expand when there's an image
+  useEffect(() => {
+    if (imageInfo) {
+      setIsOpen(true);
+    }
+  }, [imageInfo]);
 
   useEffect(() => {
     requestAnimationFrame(() => setIsMounted(true));
@@ -306,6 +346,93 @@ function ToolMessageRenderer({
       {isToolResult && (() => {
         const info = toolCallInfo;
         if (!info) return null;
+
+        // If there's an image, just show the image without the tool details panel
+        if (imageInfo) {
+          const handleCopyImage = async () => {
+            try {
+              const response = await fetch(imageInfo.url);
+              const blob = await response.blob();
+              await navigator.clipboard.write([
+                new ClipboardItem({ [blob.type]: blob })
+              ]);
+              setCopiedImage(true);
+              setTimeout(() => setCopiedImage(false), 2000);
+            } catch (err) {
+              // Fallback: copy URL if image copy fails
+              await navigator.clipboard.writeText(imageInfo.url);
+              setCopiedImage(true);
+              setTimeout(() => setCopiedImage(false), 2000);
+            }
+          };
+
+          const handleDownload = () => {
+            const link = document.createElement('a');
+            link.href = imageInfo.url;
+            link.download = imageInfo.alt || 'generated-image';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          };
+
+          return (
+            <div
+              className={`transition-opacity duration-500 ease-in-out ${
+                isMounted ? "opacity-100" : "opacity-0"
+              } md:max-w-[900px] w-full px-4 my-2`}
+            >
+              <div className="relative inline-block group">
+                <a href={imageInfo.url} target="_blank" rel="noopener noreferrer">
+                  <img
+                    src={imageInfo.url}
+                    alt={imageInfo.alt}
+                    className="max-w-full h-auto rounded-lg border border-border shadow-md cursor-pointer hover:opacity-95 transition-opacity"
+                    style={{ maxHeight: '500px', objectFit: 'contain' }}
+                  />
+                </a>
+                {/* Hover action buttons */}
+                <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={handleCopyImage}
+                    className="p-1.5 rounded-md bg-black/60 hover:bg-black/80 text-white transition-colors"
+                    title="Copy image"
+                  >
+                    {copiedImage ? (
+                      /* Tabler icon: check */
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12l5 5l10 -10" />
+                      </svg>
+                    ) : (
+                      /* Tabler icon: copy */
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z" />
+                        <path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleDownload}
+                    className="p-1.5 rounded-md bg-black/60 hover:bg-black/80 text-white transition-colors"
+                    title="Download image"
+                  >
+                    {/* Tabler icon: download */}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
+                      <path d="M7 11l5 5l5 -5" />
+                      <path d="M12 4l0 12" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Copied feedback toast */}
+                {copiedImage && (
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-md bg-black/80 text-white text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-200">
+                    Copied to clipboard
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        }
 
         return (
           <div

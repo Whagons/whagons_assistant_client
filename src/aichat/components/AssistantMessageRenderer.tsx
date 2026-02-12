@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState, useRef } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import MarkdownRenderer from "./MarkdownRenderer";
 import { ContentItem } from "../models/models";
 import { LoadingWidget } from "@/components/ui/loading-widget";
@@ -25,89 +25,14 @@ const AssistantMessageRenderer: React.FC<AssistantMessageProps> = (props) => {
   const content = useMemo(() => props.fullContent, [props.fullContent]);
   const reasoning = useMemo(() => props.reasoning, [props.reasoning]);
 
-  // Buffered content renderer for performance optimization
-  const [bufferedContent, setBufferedContent] = useState("");
-  const [renderTrigger, setRenderTrigger] = useState(0);
-
-  // Content accumulation logic
-  useEffect(() => {
-    const rawContent = String(content || "");
-    if (!rawContent) {
-      setBufferedContent("");
-      return;
-    }
-
-    // If response is complete, render everything immediately
-    if (!props.gettingResponse) {
-      setBufferedContent(rawContent);
-      setRenderTrigger(prev => prev + 1);
-      return;
-    }
-
-    // During streaming, use intelligent buffering
-    if (rawContent.length > bufferedContent.length) {
-      const newContent = rawContent.slice(bufferedContent.length);
-
-      // Accumulate content and check for structural boundaries
-      let shouldRender = false;
-      let accumulatedBuffer = bufferedContent + newContent;
-
-      // Check for table row completion (ends with | followed by newline)
-      if (accumulatedBuffer.includes('|') && /\|\s*$/m.test(accumulatedBuffer)) {
-        // Look for complete table rows
-        const lines = accumulatedBuffer.split('\n');
-        let tableRowCount = 0;
-        let inTable = false;
-
-        for (const line of lines) {
-          if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
-            tableRowCount++;
-            inTable = true;
-          } else if (inTable && line.trim() === '') {
-            // Empty line after table - good render point
-            shouldRender = true;
-            break;
-          } else if (inTable && !line.trim().startsWith('|')) {
-            // Left table context - render accumulated rows
-            shouldRender = tableRowCount >= 3; // At least header + separator + 1 data row
-            break;
-          }
-        }
-      }
-
-      // Check for code block completion
-      if (accumulatedBuffer.includes('```')) {
-        const codeBlockMatches = accumulatedBuffer.match(/```[\s\S]*?```/g);
-        if (codeBlockMatches && codeBlockMatches.length > 0) {
-          const lastBlock = codeBlockMatches[codeBlockMatches.length - 1];
-          if (lastBlock.endsWith('```')) {
-            shouldRender = true;
-          }
-        }
-      }
-
-      // Check for paragraph completion (double newline)
-      if (accumulatedBuffer.includes('\n\n')) {
-        shouldRender = true;
-      }
-
-      // Force render every 1000 characters to prevent memory issues
-      if (accumulatedBuffer.length - bufferedContent.length > 1000) {
-        shouldRender = true;
-      }
-
-      if (shouldRender) {
-        setBufferedContent(accumulatedBuffer);
-        setRenderTrigger(prev => prev + 1);
-      }
-    }
-  }, [content, props.gettingResponse, bufferedContent]);
+  // Render content directly — no buffering, stream chunks appear immediately
+  const displayContent = String(content || "");
 
   useEffect(() => {
-    if (containerRef.current) {
+    if (containerRef.current && !props.gettingResponse) {
       Prism.highlightAllUnder(containerRef.current);
     }
-  }, [renderTrigger, bufferedContent]);
+  }, [displayContent, props.gettingResponse]);
 
   return (
     <div ref={containerRef} className="assistant-message-container p-1">
@@ -142,7 +67,7 @@ const AssistantMessageRenderer: React.FC<AssistantMessageProps> = (props) => {
             <MarkdownRenderer
               isStreaming={props.gettingResponse && props.isLast}
             >
-              {bufferedContent || (props.gettingResponse ? "" : String(content || ""))}
+              {displayContent}
             </MarkdownRenderer>
             {props.gettingResponse && props.isLast && (
               <span className="inline-flex items-center ml-1">

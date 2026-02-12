@@ -993,7 +993,29 @@ function ChatWindow() {
                         
                         // In trace/timeline mode: render timeline for consecutive tool_calls as a group
                         // Skip tool_result messages (they're shown in the timeline)
+                        // EXCEPT: if the tool_result contains an image, render it via ToolMessageRenderer
                         if (message.role === "tool_result") {
+                          // Check if this tool_result contains an image
+                          const resultContent = typeof message.content === 'string' 
+                            ? message.content 
+                            : JSON.stringify(message.content);
+                          const hasImage = /!\[[^\]]*\]\([^)]+\)/.test(resultContent);
+                          
+                          console.log('[ChatWindow] tool_result content:', resultContent.substring(0, 200));
+                          console.log('[ChatWindow] hasImage:', hasImage);
+                          
+                          if (hasImage) {
+                            // Render the image via ToolMessageRenderer
+                            return (
+                              <ToolMessageRenderer
+                                key={index}
+                                message={message}
+                                messages={memoizedMessages}
+                                index={index}
+                                toolCallMap={toolCallMap}
+                              />
+                            );
+                          }
                           return null;
                         }
                         
