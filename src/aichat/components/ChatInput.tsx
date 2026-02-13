@@ -86,18 +86,38 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
       const models = await ModelsCache.get();
       setAvailableModels(models);
       
-      // Load from localStorage first, then default to first available
+      // Server-configured default model takes priority
+      const serverDefault = ModelsCache.getDefaultModel();
+      const lastServerDefault = localStorage.getItem("last_server_default_model");
+      
+      // If server default changed, reset everyone to the new default
+      if (serverDefault && serverDefault !== lastServerDefault) {
+        const defaultExists = models.some(m => m.id === serverDefault);
+        if (defaultExists) {
+          setSelectedModel(serverDefault);
+          localStorage.setItem("preferred_model", serverDefault);
+          localStorage.setItem("last_server_default_model", serverDefault);
+          return;
+        }
+      }
+      
+      // Otherwise use stored preference or fall back to server default
       const storedModel = localStorage.getItem("preferred_model");
-      // Verify stored model still exists in available models
       const storedModelExists = storedModel && models.some(m => m.id === storedModel);
       
       if (storedModelExists) {
         setSelectedModel(storedModel);
       } else if (models.length > 0) {
-        // Stored model doesn't exist anymore, use first available
-        const defaultModel = models[0].id;
+        const defaultModel = serverDefault && models.some(m => m.id === serverDefault)
+          ? serverDefault
+          : models[0].id;
         setSelectedModel(defaultModel);
         localStorage.setItem("preferred_model", defaultModel);
+      }
+      
+      // Track server default for change detection
+      if (serverDefault) {
+        localStorage.setItem("last_server_default_model", serverDefault);
       }
     } catch (e) {
       console.error("[ChatInput] Error loading models:", e);

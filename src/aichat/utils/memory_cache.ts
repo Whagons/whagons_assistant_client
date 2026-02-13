@@ -873,6 +873,7 @@ export interface ModelConfig {
 // Cache for models to prevent redundant API calls
 export class ModelsCache {
   private static models: ModelConfig[] | null = null;
+  private static defaultModel: string | null = null;
   private static fetchPromise: Promise<ModelConfig[]> | null = null;
   private static lastFetch: number = 0;
   private static CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -902,6 +903,10 @@ export class ModelsCache {
     }
   }
 
+  public static getDefaultModel(): string | null {
+    return this.defaultModel;
+  }
+
   private static async fetchModels(): Promise<ModelConfig[]> {
     try {
       const { authFetch } = await import("@/lib/utils");
@@ -910,6 +915,7 @@ export class ModelsCache {
         throw new Error(`Failed to fetch models: ${response.statusText}`);
       }
       const data = await response.json();
+      this.defaultModel = data.default_model || null;
       return data.models || [];
     } catch (error) {
       console.error("Error fetching models:", error);
@@ -919,6 +925,7 @@ export class ModelsCache {
 
   public static invalidate() {
     this.models = null;
+    this.defaultModel = null;
     this.lastFetch = 0;
   }
 }
