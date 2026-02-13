@@ -208,13 +208,15 @@ export default function WorkflowsPage() {
     }
   }, [workflowIdFromUrl, workflows, selectedWorkflow, connectToLogStream]);
 
-  // Auto-refresh workflow list periodically
+  // Auto-refresh workflow list only when a workflow is running
   useEffect(() => {
+    const hasRunning = workflows.some(w => w.status === "running");
+    if (!hasRunning) return;
     const interval = setInterval(() => {
       loadWorkflows(false);
     }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [workflows]);
 
   const loadWorkflows = async (showLoading = true) => {
     if (showLoading) setLoading(true);

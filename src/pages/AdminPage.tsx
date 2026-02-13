@@ -391,7 +391,9 @@ export default function AdminPage() {
       );
 
       if (!response.ok) {
-        throw new Error("Failed to update favorite status");
+        const data = await response.json().catch(() => null);
+        const message = data?.error || "Failed to update favorite status";
+        throw new Error(message);
       }
 
       // Update local state
@@ -420,7 +422,7 @@ export default function AdminPage() {
       toast.success(newFavorite ? "Added to favorites" : "Removed from favorites");
     } catch (err) {
       console.error("Error toggling favorite:", err);
-      toast.error("Failed to update favorite status");
+      toast.error(err instanceof Error ? err.message : "Failed to update favorite status");
     }
   };
 

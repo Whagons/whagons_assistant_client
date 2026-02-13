@@ -58,7 +58,9 @@ const Layout = ({ children }: LayoutProps) => {
   // Handle tab change
   const handleTabChange = (value: string) => {
     if (value === 'chat') {
-      navigate('/chat/');
+      // Restore last active conversation if available
+      const lastChatId = sessionStorage.getItem('lastActiveChatId');
+      navigate(lastChatId ? `/chat/${lastChatId}` : '/chat/');
     } else if (value === 'workflows') {
       navigate('/workflows');
     } else if (value === 'admin') {

@@ -10,7 +10,7 @@ import { useChatContext } from "@/layout";
 import { useNavigate, useParams } from "react-router-dom";
 import ChatInput, { QueuedMessage } from "../components/ChatInput";
 import MessageItem from "../components/ChatMessageItem";
-import { MessageCache } from "../utils/memory_cache";
+import { MessageCache, ConversationCache } from "../utils/memory_cache";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingWidget } from "@/components/ui/loading-widget";
 import { convertToChatMessages, HOST } from "../utils/utils";
@@ -18,6 +18,7 @@ import { createWSManager } from "../utils/ws";
 import ToolMessageRenderer, { ToolCallMap } from "../components/ToolMessageRenderer";
 import NewChat from "../components/NewChat";
 import { processFrontendTool, isFrontendTool } from "../utils/frontend_tools";
+import { toast } from "sonner";
 import { handleFrontendToolPromptMessage, ConfirmationRequest } from "../utils/frontend_tool_prompts";
 import { useExecutionTraces } from "../hooks/useExecutionTraces";
 import ExecutionTraceTimeline from "../components/ExecutionTraceTimeline";
@@ -344,7 +345,7 @@ function ChatWindow() {
     const handleIdChange = async () => {
       const currentId = id;
       // Original effect logic
-      if (currentId && currentId !== conversationId) {
+      if (currentId && currentId !== conversationId && !gettingResponse) {
           // Reset active state when switching chats
           setGettingResponse(false);
           setMessages([]);
@@ -377,6 +378,13 @@ function ChatWindow() {
     };
     handleIdChange();
   }, [id, conversationId, fetchMessageHistory, instantScrollToBottom, verifyIfExists, clearTraces]);
+
+  // Track last active chat for tab navigation restoration
+  useEffect(() => {
+    if (id) {
+      sessionStorage.setItem('lastActiveChatId', id);
+    }
+  }, [id]);
 
   //if ID changes to undefined because new chat button clicked
   useEffect(() => {
@@ -435,7 +443,7 @@ function ChatWindow() {
     setMessages(withAssistantPlaceholder);
     MessageCache.set(currentConversationId, withAssistantPlaceholder);
     // Delay scroll slightly to ensure DOM update
-    queueMicrotask(scrollToBottom);
+    queueMicrotask(scrollContainerToBottom);
 
     // Map content to the backend format (Gemini API structure)
     const parts: Array<{ text?: string; inline_data?: any; image_data?: any; file_data?: any }> = [];
@@ -535,12 +543,23 @@ function ChatWindow() {
         debug('ws:terminal', data.type);
         setGettingResponse(false);
         if (data.type === "error") {
-          console.error("WebSocket error:", data.error || data.message);
+          const errorMsg = data.error || data.message || "Something went wrong";
+          console.error("WebSocket error:", errorMsg);
+          toast.error(errorMsg);
         }
         // Backend closes connection after done - clean up
         if (unsubscribeWSRef.current) {
           try { unsubscribeWSRef.current(); } catch {}
           unsubscribeWSRef.current = null;
+        }
+        // Refresh sidebar titles for chats still showing "New Chat"
+        if (data.type === "done") {
+          const hasNewChat = chats.some(c => c.title === "New Chat");
+          if (hasNewChat) {
+            ConversationCache.fetchConversationsNoCache().then(freshChats => {
+              setChats(freshChats);
+            }).catch(() => {});
+          }
         }
         return;
       }
@@ -755,24 +774,27 @@ function ChatWindow() {
       const selectedModel = localStorage.getItem("preferred_model") || undefined;
       debug('ws:subscribe', currentConversationId, 'model:', selectedModel);
       
-      // Register close handler to stop loading state on unexpected disconnect
+      // Create new subscription FIRST — this awaits the new WebSocket connection,
+      // ensuring the old connection's async onclose event has already fired
+      // before we register a new close handler (prevents the old close event
+      // from triggering the new handler and prematurely setting gettingResponse=false)
+      unsubscribeWSRef.current = await wsManager.subscribe(currentConversationId, handleWebSocketEvent, selectedModel);
+      
+      // THEN register close handler — now safe from stale close events
       unsubscribeCloseHandler = wsManager.onClose(currentConversationId, (sessionId, code, reason) => {
         debug('ws:closed', sessionId, code, reason);
         // Stop loading state on any close (expected or unexpected)
         setGettingResponse(false);
       });
-      
-      // Create new subscription (will create new WebSocket connection)
-      unsubscribeWSRef.current = await wsManager.subscribe(currentConversationId, handleWebSocketEvent, selectedModel);
     };
 
     try {
       abortControllerRef.current = false;
       
       // Create fresh WebSocket connection for this message
-      ensureSubscription();
+      await ensureSubscription();
       
-      // Wait for WebSocket to be ready
+      // Wait for WebSocket to be ready (may already be open from subscribe)
       const maxWaitTime = 5000; // 5 seconds max
       const checkInterval = 100; // Check every 100ms
       const maxAttempts = maxWaitTime / checkInterval;
@@ -816,6 +838,7 @@ function ChatWindow() {
       
     } catch (error) {
       console.error("Error sending message:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to send message");
       setGettingResponse(false);
       
       // Revert optimistic messages (user + assistant placeholder)
@@ -1080,15 +1103,28 @@ function ChatWindow() {
                           />
                         </div>
                       )}
-                      {/* Show active traces during live streaming - they may not match tool_call IDs yet */}
-                      {gettingResponse && hasActiveTraces() && (
-                        <div className="pt-3 pl-3 pr-3">
-                          <ExecutionTraceTimeline 
-                            traces={traces} 
-                            isExpanded={true}
-                          />
-                        </div>
-                      )}
+                      {/* Show active traces during live streaming that aren't already rendered inline */}
+                      {gettingResponse && hasActiveTraces() && (() => {
+                        const renderedIds = new Set<string>();
+                        for (const msg of memoizedMessages) {
+                          if (msg.role === 'tool_call' && typeof msg.content === 'object' && msg.content !== null) {
+                            const id = (msg.content as any).tool_call_id;
+                            if (id) renderedIds.add(id);
+                          }
+                        }
+                        const unrendered = new Map<string, typeof traces extends Map<string, infer V> ? V : never>();
+                        for (const [id, t] of traces) {
+                          if (!renderedIds.has(id)) {
+                            unrendered.set(id, t);
+                          }
+                        }
+                        if (unrendered.size === 0) return null;
+                        return (
+                          <div className="pt-3 pl-3 pr-3">
+                            <ExecutionTraceTimeline traces={unrendered} isExpanded={true} />
+                          </div>
+                        );
+                      })()}
                       <div id="last-message" className="h-1"></div> 
                     </div>
                   </div>
