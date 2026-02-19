@@ -1093,7 +1093,7 @@ function ChatWindow() {
                       })}
                       {gettingResponse &&
                         memoizedMessages.length > 0 &&
-                        memoizedMessages[memoizedMessages.length - 1].role === "user" && (
+                        memoizedMessages[memoizedMessages.length - 1].role !== "assistant" && (
                         <div className="pl-5 pt-2">
                           <LoadingWidget
                             size={40}

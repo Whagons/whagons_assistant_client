@@ -79,10 +79,18 @@ const TableRenderer: React.FC<TableRendererProps> = (props) => {
       return null;
     }
 
+    // Table is complete if:
+    // - Not streaming at all, OR
+    // - There's non-table content after the table (text following the table), OR
+    // - The table has data rows and the last line is a complete row (ends with |)
+    const hasTrailingNonTable = lines.some(line => line.trim() && !line.startsWith('|'));
+    const lastLine = lines[lines.length - 1]?.trim() || '';
+    const lastRowComplete = lastLine.endsWith('|') && rows.length > 0;
+
     return {
       headers,
       rows,
-      isComplete: !props.isStreaming || lines.some(line => line.trim() && !line.startsWith('|'))
+      isComplete: !props.isStreaming || hasTrailingNonTable || lastRowComplete
     };
   }, [props.content, props.isStreaming]);
 

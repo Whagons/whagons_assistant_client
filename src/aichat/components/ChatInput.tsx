@@ -356,6 +356,7 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
         // Reset textarea height
         if (textInputRef.current) {
           textInputRef.current.style.height = '56px';
+          textInputRef.current.style.overflowY = 'hidden';
         }
       }
       // Can't queue file attachments while agent is busy
@@ -373,6 +374,7 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
         // Reset textarea height
         if (textInputRef.current) {
           textInputRef.current.style.height = '56px';
+          textInputRef.current.style.overflowY = 'hidden';
         }
       } else if (currentContent.length > 0) {
         const validContent = currentContent.filter(item => {
@@ -405,6 +407,7 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
         // Reset textarea height
         if (textInputRef.current) {
           textInputRef.current.style.height = '56px';
+          textInputRef.current.style.overflowY = 'hidden';
         }
       }
     }
@@ -595,13 +598,15 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
             <textarea
               ref={textInputRef}
               rows={1}
-              className={`flex-1 bg-transparent px-2 py-2 text-sm md:text-base focus:outline-none resize-none text-foreground placeholder-muted-foreground leading-relaxed min-h-[56px] w-full overflow-y-hidden`}
-              style={{ maxHeight: "180px" }}
+              className={`flex-1 bg-transparent px-2 py-2 text-sm md:text-base focus:outline-none resize-none text-foreground placeholder-muted-foreground leading-relaxed min-h-[56px] w-full`}
+              style={{ maxHeight: "300px" }}
               value={textInput}
               onChange={(e) => {
                   setTextInput(e.currentTarget.value);
                   e.currentTarget.style.height = 'auto';
-                  e.currentTarget.style.height = `${Math.max(52, e.currentTarget.scrollHeight)}px`;
+                  const newHeight = Math.max(52, e.currentTarget.scrollHeight);
+                  e.currentTarget.style.height = `${newHeight}px`;
+                  e.currentTarget.style.overflowY = newHeight >= 300 ? 'auto' : 'hidden';
               }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
