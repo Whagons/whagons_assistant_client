@@ -599,14 +599,15 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
               ref={textInputRef}
               rows={1}
               className={`flex-1 bg-transparent px-2 py-2 text-sm md:text-base focus:outline-none resize-none text-foreground placeholder-muted-foreground leading-relaxed min-h-[56px] w-full`}
-              style={{ maxHeight: "300px" }}
+              style={{ maxHeight: "50vh" }}
               value={textInput}
               onChange={(e) => {
                   setTextInput(e.currentTarget.value);
                   e.currentTarget.style.height = 'auto';
                   const newHeight = Math.max(52, e.currentTarget.scrollHeight);
+                  const maxHeight = window.innerHeight * 0.5;
                   e.currentTarget.style.height = `${newHeight}px`;
-                  e.currentTarget.style.overflowY = newHeight >= 300 ? 'auto' : 'hidden';
+                  e.currentTarget.style.overflowY = newHeight >= maxHeight ? 'auto' : 'hidden';
               }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
