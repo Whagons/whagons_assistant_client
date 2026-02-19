@@ -61,11 +61,12 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
   useEffect(() => {
     const el = textInputRef.current;
     if (!el) return;
+    // Reset height to measure true scrollHeight
+    el.style.height = '0px';
     el.style.overflowY = 'hidden';
-    el.style.height = 'auto';
     const scrollH = el.scrollHeight;
-    const maxH = window.innerHeight * 0.5;
-    const newHeight = Math.min(Math.max(52, scrollH), maxH);
+    const maxH = window.innerHeight * 0.4;
+    const newHeight = Math.max(56, Math.min(scrollH, maxH));
     el.style.height = `${newHeight}px`;
     el.style.overflowY = scrollH > maxH ? 'auto' : 'hidden';
   }, [textInput]);
@@ -599,8 +600,8 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
             <textarea
               ref={textInputRef}
               rows={1}
-              className={`flex-1 bg-transparent px-2 py-2 text-sm md:text-base focus:outline-none resize-none text-foreground placeholder-muted-foreground leading-relaxed min-h-[56px] w-full`}
-              style={{ maxHeight: "50vh" }}
+              className={`bg-transparent px-2 py-2 text-sm md:text-base focus:outline-none resize-none text-foreground placeholder-muted-foreground leading-relaxed w-full`}
+              style={{ minHeight: '56px', maxHeight: '40vh' }}
               value={textInput}
               onChange={(e) => setTextInput(e.currentTarget.value)}
               onKeyDown={handleKeyDown}
