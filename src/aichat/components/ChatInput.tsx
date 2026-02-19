@@ -57,6 +57,19 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Auto-resize textarea whenever textInput changes (covers paste, programmatic updates, etc.)
+  useEffect(() => {
+    const el = textInputRef.current;
+    if (!el) return;
+    el.style.overflowY = 'hidden';
+    el.style.height = 'auto';
+    const scrollH = el.scrollHeight;
+    const maxH = window.innerHeight * 0.5;
+    const newHeight = Math.min(Math.max(52, scrollH), maxH);
+    el.style.height = `${newHeight}px`;
+    el.style.overflowY = scrollH > maxH ? 'auto' : 'hidden';
+  }, [textInput]);
+
   // Get current model's capabilities
   const currentModelConfig = useMemo(() => {
     return availableModels.find(m => m.id === selectedModel);
@@ -353,11 +366,7 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
         setTextInput("");
         // Clear draft from localStorage
         try { localStorage.removeItem(INPUT_DRAFT_KEY); } catch {}
-        // Reset textarea height
-        if (textInputRef.current) {
-          textInputRef.current.style.height = '56px';
-          textInputRef.current.style.overflowY = 'hidden';
-        }
+        // Reset textarea height (useEffect handles this via textInput change)
       }
       // Can't queue file attachments while agent is busy
       return;
@@ -371,11 +380,7 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
         setTextInput("");
         // Clear draft from localStorage
         try { localStorage.removeItem(INPUT_DRAFT_KEY); } catch {}
-        // Reset textarea height
-        if (textInputRef.current) {
-          textInputRef.current.style.height = '56px';
-          textInputRef.current.style.overflowY = 'hidden';
-        }
+        // Reset textarea height (useEffect handles this via textInput change)
       } else if (currentContent.length > 0) {
         const validContent = currentContent.filter(item => {
           if ((isImageData(item.content) || isPdfData(item.content)) && item.content.serverUrl && !item.content.isUploading) {
@@ -404,11 +409,7 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
         setTextInput("");
         // Clear draft from localStorage
         try { localStorage.removeItem(INPUT_DRAFT_KEY); } catch {}
-        // Reset textarea height
-        if (textInputRef.current) {
-          textInputRef.current.style.height = '56px';
-          textInputRef.current.style.overflowY = 'hidden';
-        }
+        // Reset textarea height (useEffect handles this via textInput change)
       }
     }
   };
@@ -601,14 +602,7 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
               className={`flex-1 bg-transparent px-2 py-2 text-sm md:text-base focus:outline-none resize-none text-foreground placeholder-muted-foreground leading-relaxed min-h-[56px] w-full`}
               style={{ maxHeight: "50vh" }}
               value={textInput}
-              onChange={(e) => {
-                  setTextInput(e.currentTarget.value);
-                  e.currentTarget.style.height = 'auto';
-                  const newHeight = Math.max(52, e.currentTarget.scrollHeight);
-                  const maxHeight = window.innerHeight * 0.5;
-                  e.currentTarget.style.height = `${newHeight}px`;
-                  e.currentTarget.style.overflowY = newHeight >= maxHeight ? 'auto' : 'hidden';
-              }}
+              onChange={(e) => setTextInput(e.currentTarget.value)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={props.gettingResponse ? "Type to queue message..." : "Type your message here..."}
