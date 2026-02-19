@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { auth } from "@/lib/firebase";
+import Prism from "prismjs";
+import { PrismaCache } from "@/aichat/utils/memory_cache";
 
 // Initialize dayjs plugins
 dayjs.extend(relativeTime);
@@ -87,6 +89,11 @@ export default function WorkflowsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [activeTab, setActiveTab] = useState<"logs" | "code">("logs");
+  const [workflowCode, setWorkflowCode] = useState<string>("");
+  const [highlightedCode, setHighlightedCode] = useState<string>("");
+  const [codeLoading, setCodeLoading] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -204,6 +211,7 @@ export default function WorkflowsPage() {
       if (workflow) {
         setSelectedWorkflow(workflow);
         connectToLogStream(workflow.id);
+        loadWorkflowCode(workflow.id);
       }
     }
   }, [workflowIdFromUrl, workflows, selectedWorkflow, connectToLogStream]);
@@ -259,6 +267,44 @@ export default function WorkflowsPage() {
     }
   };
 
+  const loadWorkflowCode = async (workflowId: string) => {
+    setCodeLoading(true);
+    try {
+      const response = await authFetch(`${HOST}/api/v1/workflows/${workflowId}`);
+      if (!response.ok) throw new Error("Failed to load workflow code");
+      const data = await response.json();
+      const code = data.code || "";
+      setWorkflowCode(code);
+
+      // Highlight with Prism using the PrismaCache system
+      if (code) {
+        await PrismaCache.loadLanguage("typescript");
+        const grammar = Prism.languages.typescript || Prism.languages.javascript;
+        const lang = Prism.languages.typescript ? "typescript" : "javascript";
+        setHighlightedCode(Prism.highlight(code, grammar, lang));
+      } else {
+        setHighlightedCode("");
+      }
+    } catch (err) {
+      toast.error("Failed to load workflow code");
+      setWorkflowCode("Failed to load code.");
+      setHighlightedCode("");
+    } finally {
+      setCodeLoading(false);
+    }
+  };
+
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(workflowCode);
+      setCodeCopied(true);
+      toast.success("Code copied to clipboard");
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy code");
+    }
+  };
+
   const handleSelectWorkflow = async (workflow: Workflow) => {
     if (selectedWorkflow?.id === workflow.id) {
       // Deselecting - close SSE connection
@@ -268,14 +314,20 @@ export default function WorkflowsPage() {
       }
       setSelectedWorkflow(null);
       setLogs("");
+      setWorkflowCode("");
+      setHighlightedCode("");
       setIsStreaming(false);
+      setActiveTab("logs");
       navigate('/workflows', { replace: true });
       return;
     }
     setSelectedWorkflow(workflow);
+    setActiveTab("logs");
     navigate(`/workflows/${workflow.id}`, { replace: true });
     // Connect to SSE stream for real-time logs
     connectToLogStream(workflow.id);
+    // Pre-fetch code
+    loadWorkflowCode(workflow.id);
   };
 
   const handleRunWorkflow = async (workflowId: string) => {
@@ -417,6 +469,43 @@ export default function WorkflowsPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto h-full overflow-auto scrollbar">
+      {/* Prism token colors for workflow code viewer (okaidia theme) */}
+      <style>{`
+        .workflow-code-highlight code { color: #f8f8f2; }
+        .workflow-code-highlight .token.comment,
+        .workflow-code-highlight .token.prolog,
+        .workflow-code-highlight .token.doctype,
+        .workflow-code-highlight .token.cdata { color: #8292a2; }
+        .workflow-code-highlight .token.punctuation { color: #f8f8f2; }
+        .workflow-code-highlight .token.namespace { opacity: .7; }
+        .workflow-code-highlight .token.property,
+        .workflow-code-highlight .token.tag,
+        .workflow-code-highlight .token.constant,
+        .workflow-code-highlight .token.symbol,
+        .workflow-code-highlight .token.deleted { color: #f92672; }
+        .workflow-code-highlight .token.boolean,
+        .workflow-code-highlight .token.number { color: #ae81ff; }
+        .workflow-code-highlight .token.selector,
+        .workflow-code-highlight .token.attr-name,
+        .workflow-code-highlight .token.string,
+        .workflow-code-highlight .token.char,
+        .workflow-code-highlight .token.builtin,
+        .workflow-code-highlight .token.inserted { color: #a6e22e; }
+        .workflow-code-highlight .token.operator,
+        .workflow-code-highlight .token.entity,
+        .workflow-code-highlight .token.url,
+        .workflow-code-highlight .token.variable { color: #f8f8f2; }
+        .workflow-code-highlight .token.atrule,
+        .workflow-code-highlight .token.attr-value,
+        .workflow-code-highlight .token.function,
+        .workflow-code-highlight .token.class-name { color: #e6db74; }
+        .workflow-code-highlight .token.keyword { color: #66d9ef; }
+        .workflow-code-highlight .token.regex,
+        .workflow-code-highlight .token.important { color: #fd971f; }
+        .workflow-code-highlight .token.important,
+        .workflow-code-highlight .token.bold { font-weight: bold; }
+        .workflow-code-highlight .token.italic { font-style: italic; }
+      `}</style>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Workflows</h1>
@@ -564,7 +653,10 @@ export default function WorkflowsPage() {
                     }
                     setSelectedWorkflow(null);
                     setLogs("");
+                    setWorkflowCode("");
+                    setHighlightedCode("");
                     setIsStreaming(false);
+                    setActiveTab("logs");
                     navigate('/workflows', { replace: true });
                   }}
                   className="p-2 hover:bg-muted/30 rounded-lg transition-colors text-muted-foreground hover:text-foreground shrink-0 ml-2"
@@ -669,54 +761,114 @@ export default function WorkflowsPage() {
                 </div>
               )}
 
-              {/* Logs */}
+              {/* Tabs: Logs / Code */}
               <div className="flex-1 flex flex-col min-h-0">
                 <div className="flex items-center justify-between mb-2 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-medium">Logs</h3>
-                    {isStreaming && (
-                      <span className="flex items-center gap-1.5 text-xs text-green-400">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                        </span>
-                        Live
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setActiveTab("logs")}
+                      className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                        activeTab === "logs"
+                          ? "bg-muted text-foreground font-medium"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        Logs
+                        {isStreaming && activeTab === "logs" && (
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                          </span>
+                        )}
                       </span>
-                    )}
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("code")}
+                      className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                        activeTab === "code"
+                          ? "bg-muted text-foreground font-medium"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      }`}
+                    >
+                      Code
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      if (isStreaming) {
-                        // Reconnect to stream
-                        connectToLogStream(selectedWorkflow.id);
-                      } else {
-                        loadLogs(selectedWorkflow.id);
-                      }
-                    }}
-                    disabled={logsLoading}
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                  >
-                    {logsLoading ? (
-                      <div className="w-3 h-3 border border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
-                        <path d="M21 3v5h-5"/>
-                      </svg>
-                    )}
-                    Refresh
-                  </button>
-                </div>
-                <div 
-                  ref={logsContainerRef}
-                  className="flex-1 overflow-auto bg-card/30 rounded-lg border border-border p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap min-h-0"
-                >
-                  {logsLoading && !logs ? (
-                    <div className="text-muted-foreground">Loading logs...</div>
+                  {activeTab === "logs" ? (
+                    <button
+                      onClick={() => {
+                        if (isStreaming) {
+                          connectToLogStream(selectedWorkflow.id);
+                        } else {
+                          loadLogs(selectedWorkflow.id);
+                        }
+                      }}
+                      disabled={logsLoading}
+                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                    >
+                      {logsLoading ? (
+                        <div className="w-3 h-3 border border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                          <path d="M21 3v5h-5"/>
+                        </svg>
+                      )}
+                      Refresh
+                    </button>
                   ) : (
-                    <div className="text-muted-foreground">{logs || "No logs available."}</div>
+                    <button
+                      onClick={handleCopyCode}
+                      disabled={codeLoading || !workflowCode}
+                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {codeCopied ? (
+                        <>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                          </svg>
+                          Copy
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
+
+                {activeTab === "logs" ? (
+                  <div 
+                    ref={logsContainerRef}
+                    className="flex-1 overflow-auto bg-card/30 rounded-lg border border-border p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap min-h-0"
+                  >
+                    {logsLoading && !logs ? (
+                      <div className="text-muted-foreground">Loading logs...</div>
+                    ) : (
+                      <div className="text-muted-foreground">{logs || "No logs available."}</div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="workflow-code-highlight flex-1 overflow-auto bg-card/30 rounded-lg border border-border p-4 font-mono text-xs leading-relaxed min-h-0">
+                    {codeLoading ? (
+                      <div className="text-muted-foreground">Loading code...</div>
+                    ) : highlightedCode ? (
+                      <pre className="m-0 p-0 bg-transparent overflow-visible">
+                        <code
+                          className="language-typescript"
+                          dangerouslySetInnerHTML={{ __html: highlightedCode }}
+                        />
+                      </pre>
+                    ) : (
+                      <div className="text-muted-foreground">{workflowCode || "No code available."}</div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
