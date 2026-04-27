@@ -24,6 +24,7 @@ interface ChatInputProps {
   onQueueMessage: (message: QueuedMessage) => void;
   onRemoveFromQueue: (id: string) => void;
   onClearQueue: () => void;
+  historyTokenCount?: number;
 }
 
 const isImageData = (content: any): content is ImageData => {
@@ -83,6 +84,15 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
   const currentModelSupportsPdf = useMemo(() => {
     return currentModelConfig?.capabilities?.includes("pdf") ?? false;
   }, [currentModelConfig]);
+
+  const inputTokenCount = useMemo(() => estimateTokenCount(textInput), [textInput]);
+
+  const contextUsage = useMemo(() => {
+    const used = Math.max(0, (props.historyTokenCount || 0) + inputTokenCount);
+    const contextSize = currentModelConfig?.context_size || 0;
+    const percent = contextSize > 0 ? Math.min(999, Math.round((used / contextSize) * 100)) : 0;
+    return { used, contextSize, percent };
+  }, [currentModelConfig?.context_size, inputTokenCount, props.historyTokenCount]);
 
   // Get favorite models (max 5) and all models
   const favoriteModels = useMemo(() => {
@@ -716,7 +726,12 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
                 </button>
               </div>
               {/* Right side: action button, paper-plane with neutral colors */}
-              <div className="flex items-center">
+              <div className="flex items-center gap-3">
+                <ContextUsagePill
+                  used={contextUsage.used}
+                  contextSize={contextUsage.contextSize}
+                  percent={contextUsage.percent}
+                />
                 {props.gettingResponse ? (
                   <button
                     type="button"
@@ -766,5 +781,37 @@ const ChatInput: React.FC<ChatInputProps> = (props) => {
     </div>
   );
 };
+
+function estimateTokenCount(text: string): number {
+  if (!text) return 0;
+  // Fast local approximation: English/code averages around 3.5-4 chars per token.
+  return Math.ceil(text.length / 4);
+}
+
+function formatCompactTokens(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 10_000) return `${(tokens / 1_000).toFixed(1)}K`;
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(2).replace(/0$/, "").replace(/\.0$/, "")}K`;
+  return tokens.toString();
+}
+
+function ContextUsagePill({ used, contextSize, percent }: { used: number; contextSize: number; percent: number }) {
+  const tone = percent >= 90
+    ? "text-red-400 bg-red-950/30 border-red-900/50"
+    : percent >= 70
+      ? "text-amber-400 bg-amber-950/30 border-amber-900/50"
+      : "text-muted-foreground bg-background/45 border-border/50";
+
+  return (
+    <div
+      className={`hidden sm:flex h-8 items-center rounded-xl border px-2.5 font-mono text-[11px] tabular-nums ${tone}`}
+      title={contextSize > 0
+        ? `Estimated chat context: ${used.toLocaleString()} / ${contextSize.toLocaleString()} tokens`
+        : `Estimated chat context: ${used.toLocaleString()} tokens`}
+    >
+      {formatCompactTokens(used)} {contextSize > 0 && <span className="ml-1">({percent}%)</span>}
+    </div>
+  );
+}
 
 export default ChatInput;

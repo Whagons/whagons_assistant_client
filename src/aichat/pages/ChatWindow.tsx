@@ -106,6 +106,7 @@ function ChatWindow() {
 
   // Memoize the messages to prevent unnecessary re-renders
   const memoizedMessages = useMemo(() => messages, [messages]);
+  const historyTokenCount = useMemo(() => estimateMessagesTokenCount(memoizedMessages), [memoizedMessages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1243,6 +1244,7 @@ function ChatWindow() {
           setIsListening={() => {}}
           handleStopRequest={handleStopRequest}
           conversationId={conversationId}
+          historyTokenCount={historyTokenCount}
           messageQueue={messageQueue}
           onQueueMessage={handleQueueMessage}
           onRemoveFromQueue={handleRemoveFromQueue}
@@ -1251,6 +1253,32 @@ function ChatWindow() {
       </div>
     </div>
   );
+}
+
+function estimateMessagesTokenCount(messages: Message[]): number {
+  let chars = 0;
+  for (const message of messages) {
+    chars += message.role.length + 2;
+    chars += estimateContentChars(message.content);
+    if (message.reasoning) chars += message.reasoning.length;
+  }
+  return Math.ceil(chars / 4);
+}
+
+function estimateContentChars(content: Message["content"]): number {
+  if (typeof content === "string") return content.length;
+  if (Array.isArray(content)) {
+    return content.reduce((sum, item) => {
+      if (typeof item.content === "string") return sum + item.content.length;
+      if ("filename" in item.content) return sum + item.content.filename.length + 1200;
+      return sum + 800;
+    }, 0);
+  }
+  try {
+    return JSON.stringify(content).length;
+  } catch {
+    return 0;
+  }
 }
 
 function MemoryStatusChip({ status }: { status: MemoryStatus | null }) {
