@@ -24,10 +24,23 @@ import ExecutionTraceTimeline from "../components/ExecutionTraceTimeline";
 import ConfirmationDialog from "../components/ConfirmationDialog";
 import HistoryWarningBanner from "../components/HistoryWarningBanner";
 import { useTheme } from "@/lib/theme-provider";
+import { buildAuthUserContext } from "../utils/user_context";
 
 // Component to render user message content
 
 const wsManager = createWSManager(HOST);
+
+type MemoryStatus = {
+  enabled: boolean;
+  available: boolean;
+  falkordb: boolean;
+  retrieved_count: number;
+  duration_ms: number;
+  skipped_reason?: string;
+  error?: string;
+  checked_at?: number;
+  source: "status" | "turn";
+};
 
 function ChatWindow() {
   // Lightweight streaming debug logger. Enable with: localStorage.setItem('debug_stream','1')
@@ -76,22 +89,63 @@ function ChatWindow() {
   
   // History warnings state (for model compatibility warnings when switching models)
   const [historyWarnings, setHistoryWarnings] = useState<Array<{type: string; message: string; details: string}>>([]);
+  const [memoryStatus, setMemoryStatus] = useState<MemoryStatus | null>(null);
   
   // Message queue state (for queueing messages while agent is running)
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   
-  // Toggle for legacy tool visualization vs trace-based
-  // Default to trace-based visualization (useLegacyToolViz = false)
-  // To enable legacy mode: localStorage.setItem('use_legacy_tool_viz', '1')
-  // To enable trace mode: localStorage.removeItem('use_legacy_tool_viz')
-  const [useLegacyToolViz] = useState<boolean>(() => {
-    const legacy = localStorage.getItem('use_legacy_tool_viz') === '1';
-    console.log('[ChatWindow] Tool visualization mode:', legacy ? 'LEGACY' : 'TRACE');
-    return legacy;
-  });
+  const useLegacyToolViz = false;
 
   // Memoize the messages to prevent unnecessary re-renders
   const memoizedMessages = useMemo(() => messages, [messages]);
+  const historyTokenCount = useMemo(() => estimateMessagesTokenCount(memoizedMessages), [memoizedMessages]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchMemoryStatus = async () => {
+      try {
+        const response = await fetch(`${HOST}/api/v1/status`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`status ${response.status}`);
+        const data = await response.json();
+        const services = data?.services || {};
+        const memory = services.memory || {};
+        const falkordb = services.falkordb || {};
+        if (!cancelled) {
+          setMemoryStatus({
+            enabled: Boolean(memory.enabled),
+            available: Boolean(memory.available),
+            falkordb: Boolean(falkordb.available),
+            retrieved_count: 0,
+            duration_ms: 0,
+            error: falkordb.last_error || "",
+            checked_at: Date.now(),
+            source: "status",
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMemoryStatus({
+            enabled: false,
+            available: false,
+            falkordb: false,
+            retrieved_count: 0,
+            duration_ms: 0,
+            error: error instanceof Error ? error.message : "Failed to fetch memory status",
+            checked_at: Date.now(),
+            source: "status",
+          });
+        }
+      }
+    };
+
+    fetchMemoryStatus();
+    const interval = window.setInterval(fetchMemoryStatus, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
   // Track the index of the last user message for scrolling
   const lastUserIndex = useMemo(() => {
     const arr = memoizedMessages;
@@ -504,6 +558,21 @@ function ChatWindow() {
         setTimeout(() => setHistoryWarnings([]), 10000);
         return;
       }
+
+      if (data.type === "memory_status") {
+        setMemoryStatus({
+          enabled: Boolean(data.enabled),
+          available: Boolean(data.available),
+          falkordb: Boolean(data.falkordb),
+          retrieved_count: Number(data.retrieved_count || 0),
+          duration_ms: Number(data.duration_ms || 0),
+          skipped_reason: data.skipped_reason || "",
+          error: data.error || "",
+          checked_at: Date.now(),
+          source: "turn",
+        });
+        return;
+      }
       
       // Handle frontend tool prompts (tool-specific messages, not chat content)
       if (data.type === "frontend_tool_prompt") {
@@ -801,7 +870,8 @@ function ChatWindow() {
           content: {
             parts: parts
           }
-        }
+        },
+        user_context: buildAuthUserContext(),
       };
       
       debug('ws:send', messagePayload);
@@ -993,7 +1063,24 @@ function ChatWindow() {
                         
                         // In trace/timeline mode: render timeline for consecutive tool_calls as a group
                         // Skip tool_result messages (they're shown in the timeline)
+                        // EXCEPT: if the tool_result contains an image, render it via ToolMessageRenderer
                         if (message.role === "tool_result") {
+                          const resultContent = typeof message.content === 'string'
+                            ? message.content
+                            : JSON.stringify(message.content);
+                          const hasImage = /!\[[^\]]*\]\([^)]+\)/.test(resultContent);
+
+                          if (hasImage) {
+                            return (
+                              <ToolMessageRenderer
+                                key={index}
+                                message={message}
+                                messages={memoizedMessages}
+                                index={index}
+                                toolCallMap={toolCallMap}
+                              />
+                            );
+                          }
                           return null;
                         }
                         
@@ -1058,15 +1145,30 @@ function ChatWindow() {
                           />
                         </div>
                       )}
-                      {/* Show active traces during live streaming - they may not match tool_call IDs yet */}
-                      {gettingResponse && hasActiveTraces() && (
-                        <div className="pt-3 pl-3 pr-3">
-                          <ExecutionTraceTimeline 
-                            traces={traces} 
-                            isExpanded={true}
-                          />
-                        </div>
-                      )}
+                      {/* Show active traces during live streaming that aren't already rendered inline */}
+                      {gettingResponse && hasActiveTraces() && (() => {
+                        const renderedIds = new Set<string>();
+                        for (const msg of memoizedMessages) {
+                          if (msg.role === 'tool_call' && typeof msg.content === 'object' && msg.content !== null) {
+                            const id = (msg.content as any).tool_call_id;
+                            if (id) renderedIds.add(id);
+                          }
+                        }
+
+                        const unrendered = new Map<string, typeof traces extends Map<string, infer V> ? V : never>();
+                        for (const [id, traceGroup] of traces) {
+                          if (!renderedIds.has(id)) {
+                            unrendered.set(id, traceGroup);
+                          }
+                        }
+
+                        if (unrendered.size === 0) return null;
+                        return (
+                          <div className="pt-3 pl-3 pr-3">
+                            <ExecutionTraceTimeline traces={unrendered} isExpanded={true} />
+                          </div>
+                        );
+                      })()}
                       <div id="last-message" className="h-1"></div> 
                     </div>
                   </div>
@@ -1102,18 +1204,114 @@ function ChatWindow() {
 
       {/* Chat Input Area: Rendered below the main content area */}
       <div className="w-full md:max-w-[760px] mx-auto" ref={inputContainerRef}>
+        <MemoryStatusChip status={memoryStatus} />
         <ChatInput
           onSubmit={handleSubmit}
           gettingResponse={gettingResponse}
           setIsListening={() => {}}
           handleStopRequest={handleStopRequest}
           conversationId={conversationId}
+          historyTokenCount={historyTokenCount}
           messageQueue={messageQueue}
           onQueueMessage={handleQueueMessage}
           onRemoveFromQueue={handleRemoveFromQueue}
           onClearQueue={handleClearQueue}
         />
       </div>
+    </div>
+  );
+}
+
+function estimateMessagesTokenCount(messages: Message[]): number {
+  let chars = 0;
+  for (const message of messages) {
+    chars += message.role.length + 2;
+    chars += estimateContentChars(message.content);
+    if (message.reasoning) chars += message.reasoning.length;
+  }
+  return Math.ceil(chars / 4);
+}
+
+function estimateContentChars(content: Message["content"]): number {
+  if (typeof content === "string") return content.length;
+  if (Array.isArray(content)) {
+    return content.reduce((sum, item) => {
+      if (typeof item.content === "string") return sum + item.content.length;
+      if ("filename" in item.content) return sum + item.content.filename.length + 1200;
+      return sum + 800;
+    }, 0);
+  }
+  try {
+    return JSON.stringify(content).length;
+  } catch {
+    return 0;
+  }
+}
+
+function MemoryStatusChip({ status }: { status: MemoryStatus | null }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!status) {
+    return (
+      <div className="mb-2 flex justify-end px-3">
+        <div className="rounded-full border border-border/60 bg-card/70 px-3 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur">
+          Memory: checking
+        </div>
+      </div>
+    );
+  }
+
+  const hasError = Boolean(status.error);
+  const isHealthy = status.enabled && status.available && status.falkordb && !hasError;
+  const label = !status.enabled
+    ? "Memory off"
+    : !status.falkordb
+      ? "FalkorDB down"
+      : !status.available
+        ? "Memory unavailable"
+        : hasError
+          ? "Memory error"
+          : status.source === "turn"
+            ? `Memory: ${status.retrieved_count} injected`
+            : "Memory ready";
+
+  const dotClass = isHealthy
+    ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.75)]"
+    : status.enabled
+      ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.65)]"
+      : "bg-muted-foreground";
+
+  const detail = hasError
+    ? status.error
+    : status.skipped_reason
+      ? `Skipped: ${status.skipped_reason.replaceAll("_", " ")}`
+      : status.source === "turn"
+        ? `Last turn searched FalkorDB in ${status.duration_ms}ms.`
+        : "Backend reports FalkorDB memory is available.";
+
+  return (
+    <div className="mb-2 flex justify-end px-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="group max-w-full rounded-2xl border border-border/60 bg-card/80 px-3 py-2 text-left text-xs shadow-sm backdrop-blur transition-colors hover:bg-card"
+        title="Memory diagnostics"
+      >
+        <div className="flex items-center justify-end gap-2 text-foreground">
+          <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} />
+          <span className="font-medium">{label}</span>
+          <span className="text-muted-foreground">{expanded ? "Hide" : "Details"}</span>
+        </div>
+        {expanded && (
+          <div className="mt-2 max-w-[520px] space-y-1 text-[11px] leading-4 text-muted-foreground">
+            <div>{detail}</div>
+            <div>
+              Enabled: {status.enabled ? "yes" : "no"} | FalkorDB: {status.falkordb ? "up" : "down"} | Runtime: {status.available ? "ready" : "not ready"}
+            </div>
+            {status.checked_at && <div>Checked: {new Date(status.checked_at).toLocaleTimeString()}</div>}
+          </div>
+        )}
+      </button>
     </div>
   );
 }

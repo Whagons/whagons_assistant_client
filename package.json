@@ -9,7 +9,7 @@
     "build": "vite build",
     "serve": "vite preview --host",
     "use:nca": "cp configs/nca/favicon.ico src/assets/favicon.ico && cp configs/nca/logo.svg src/assets/logo.svg && grep -v '^VITE_APP_NAME=' .env > .env.tmp && mv .env.tmp .env && echo 'VITE_APP_NAME=NCA Assistant' >> .env",
-    "use:whagons": "cp configs/whagons/favicon.ico src/assets/favicon.ico && cp configs/whagons/logo.svg src/assets/logo.svg && grep -v '^VITE_APP_NAME=' .env > .env.tmp && mv .env.tmp .env && echo 'VITE_APP_NAME=Whagons Assistant' >> .env",
+    "use:whagons": "cp configs/whagons/favicon.svg src/assets/favicon.svg && cp configs/whagons/logo.svg src/assets/logo.svg && grep -v '^VITE_APP_NAME=' .env > .env.tmp && mv .env.tmp .env && echo 'VITE_APP_NAME=Whagons Assistant' >> .env",
     "use:whagons5-widget": "cp configs/whagons5-widget/favicon.ico src/assets/favicon.ico && cp configs/whagons5-widget/logo.svg src/assets/logo.svg && grep -v '^VITE_APP_NAME=' .env > .env.tmp && mv .env.tmp .env && echo 'VITE_APP_NAME=Whagons Widget' >> .env"
   },
   "license": "MIT",

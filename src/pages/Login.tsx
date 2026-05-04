@@ -71,11 +71,11 @@ export default function Login() {
   const ProviderIcon = AUTH_PROVIDER === 'microsoft' ? MicrosoftIcon : GoogleIcon;
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-      <div className="w-full max-w-md p-8 space-y-8 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+    <div className="flex items-center justify-center min-h-screen bg-background px-4">
+      <div className="w-full max-w-md p-8 space-y-8 bg-card text-card-foreground border border-border rounded-2xl shadow-[0_24px_80px_rgba(22,24,29,0.18)] dark:shadow-[0_24px_80px_rgba(0,0,0,0.42)]">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Login</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">Sign in to {APP_NAME}</p>
+          <h1 className="text-2xl font-bold text-foreground">Login</h1>
+          <p className="mt-2 text-muted-foreground">Sign in to {APP_NAME}</p>
         </div>
         
         {error && (
@@ -87,7 +87,7 @@ export default function Login() {
         <div className="space-y-4">
           <Button 
             onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-2 bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 dark:bg-gray-700 dark:text-white dark:border-gray-600 dark:hover:bg-gray-600"
+            className="w-full flex items-center justify-center gap-2 bg-secondary text-secondary-foreground border border-border hover:bg-secondary/80 dark:bg-secondary dark:text-secondary-foreground dark:hover:bg-secondary/80"
             disabled={loading}
           >
             <ProviderIcon />
