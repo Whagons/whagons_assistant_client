@@ -1330,14 +1330,27 @@ function extractImageMarkdown(content: string): string {
 }
 
 function extractImageURL(content: string): string {
+  const normalizeURL = (url: string) => {
+    if (!url) return "";
+    try {
+      const parsed = new URL(url);
+      if ((parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") && parsed.pathname.startsWith("/images/")) {
+        return `${HOST}${parsed.pathname}`;
+      }
+    } catch {
+      if (url.startsWith("/images/")) return `${HOST}${url}`;
+    }
+    return url;
+  };
+
   try {
     const parsed = JSON.parse(content);
-    if (typeof parsed?.image_url === "string") return parsed.image_url;
-    if (typeof parsed?.url === "string" && /\/images\//.test(parsed.url)) return parsed.url;
+    if (typeof parsed?.image_url === "string") return normalizeURL(parsed.image_url);
+    if (typeof parsed?.url === "string" && /\/images\//.test(parsed.url)) return normalizeURL(parsed.url);
     if (typeof parsed?.content === "string") return extractImageURL(parsed.content);
   } catch {
     const urlMatch = content.match(/https?:\/\/[^\s"')]+\/images\/[^\s"')]+/);
-    if (urlMatch) return urlMatch[0];
+    if (urlMatch) return normalizeURL(urlMatch[0]);
   }
   return "";
 }
