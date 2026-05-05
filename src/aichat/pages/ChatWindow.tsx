@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LoadingWidget } from "@/components/ui/loading-widget";
 import { convertToChatMessages, HOST } from "../utils/utils";
 import { createWSManager } from "../utils/ws";
-import ToolMessageRenderer, { ToolCallMap } from "../components/ToolMessageRenderer";
+import type { ToolCallMap } from "../components/ToolMessageRenderer";
 import NewChat from "../components/NewChat";
 import { processFrontendTool, isFrontendTool } from "../utils/frontend_tools";
 import { handleFrontendToolPromptMessage, ConfirmationRequest } from "../utils/frontend_tool_prompts";
@@ -25,6 +25,7 @@ import ConfirmationDialog from "../components/ConfirmationDialog";
 import HistoryWarningBanner from "../components/HistoryWarningBanner";
 import { useTheme } from "@/lib/theme-provider";
 import { buildAuthUserContext } from "../utils/user_context";
+import MarkdownRenderer from "../components/MarkdownRenderer";
 
 // Component to render user message content
 
@@ -1048,22 +1049,9 @@ function ChatWindow() {
                           );
                         }
                         
-                        // Tool messages: legacy mode shows the old widget
-                        if (useLegacyToolViz) {
-                          return (
-                            <ToolMessageRenderer
-                              key={index}
-                              message={message}
-                              messages={memoizedMessages}
-                              index={index}
-                              toolCallMap={toolCallMap}
-                            />
-                          );
-                        }
-                        
                         // In trace/timeline mode: render timeline for consecutive tool_calls as a group
                         // Skip tool_result messages (they're shown in the timeline)
-                        // EXCEPT: if the tool_result contains an image, render it via ToolMessageRenderer
+                        // EXCEPT: if the tool_result contains an image, render only the image markdown.
                         if (message.role === "tool_result") {
                           const resultContent = typeof message.content === 'string'
                             ? message.content
@@ -1071,15 +1059,7 @@ function ChatWindow() {
                           const hasImage = /!\[[^\]]*\]\([^)]+\)/.test(resultContent);
 
                           if (hasImage) {
-                            return (
-                              <ToolMessageRenderer
-                                key={index}
-                                message={message}
-                                messages={memoizedMessages}
-                                index={index}
-                                toolCallMap={toolCallMap}
-                              />
-                            );
+                            return <ToolResultImage key={index} content={resultContent} />;
                           }
                           return null;
                         }
@@ -1314,6 +1294,31 @@ function MemoryStatusChip({ status }: { status: MemoryStatus | null }) {
       </button>
     </div>
   );
+}
+
+function ToolResultImage({ content }: { content: string }) {
+  const imageMarkdown = extractImageMarkdown(content);
+  if (!imageMarkdown) return null;
+
+  return (
+    <div className="my-3 max-w-full rounded-2xl border border-border/60 bg-card/40 p-3 shadow-sm">
+      <MarkdownRenderer isStreaming={false}>{imageMarkdown}</MarkdownRenderer>
+    </div>
+  );
+}
+
+function extractImageMarkdown(content: string): string {
+  const markdownMatch = content.match(/!\[[^\]]*\]\([^)]+\)/);
+  if (markdownMatch) return markdownMatch[0];
+
+  try {
+    const parsed = JSON.parse(content);
+    const nestedContent = typeof parsed?.content === "string" ? parsed.content : "";
+    const nestedMatch = nestedContent.match(/!\[[^\]]*\]\([^)]+\)/);
+    return nestedMatch?.[0] || "";
+  } catch {
+    return "";
+  }
 }
 
 /**
