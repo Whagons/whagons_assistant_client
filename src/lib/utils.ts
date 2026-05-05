@@ -21,9 +21,20 @@ export async function authFetch(
     const token = await user.getIdToken();
     headers.set("Authorization", `Bearer ${token}`);
   }
-  
-  return fetch(url, {
+
+  const response = await fetch(url, {
     ...options,
     headers,
   });
+
+  if (response.status === 401 && user) {
+    const token = await user.getIdToken(true);
+    headers.set("Authorization", `Bearer ${token}`);
+    return fetch(url, {
+      ...options,
+      headers,
+    });
+  }
+
+  return response;
 }
