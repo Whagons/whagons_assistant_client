@@ -5,6 +5,7 @@ import remarkBreaks from "remark-breaks";
 import supersub from "remark-supersub";
 import CustomPre from "./CustomPre";
 import TableRenderer from "./TableRenderer";
+import { HOST } from "../utils/utils";
 
 interface MarkdownRendererProps {
   children: string;
@@ -78,6 +79,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = (props) => {
             key={idx}
             components={{
               pre: CustomPre as any,
+              img: ({ src, alt, ...rest }) => (
+                <img src={normalizeImageSrc(src)} alt={alt || ""} {...rest} />
+              ),
               table: () => null,
               thead: () => null,
               tbody: () => null,
@@ -97,3 +101,20 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = (props) => {
 };
 
 export default MarkdownRenderer;
+
+function normalizeImageSrc(src: string | undefined): string | undefined {
+  if (!src) return src;
+
+  try {
+    const parsed = new URL(src);
+    if ((parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") && parsed.pathname.startsWith("/images/")) {
+      return `${HOST}${parsed.pathname}`;
+    }
+  } catch {
+    if (src.startsWith("/images/")) {
+      return `${HOST}${src}`;
+    }
+  }
+
+  return src;
+}
