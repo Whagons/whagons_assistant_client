@@ -1056,7 +1056,7 @@ function ChatWindow() {
                           const resultContent = typeof message.content === 'string'
                             ? message.content
                             : JSON.stringify(message.content);
-                          const hasImage = /!\[[^\]]*\]\([^)]+\)/.test(resultContent);
+                          const hasImage = hasToolResultImage(resultContent);
 
                           if (hasImage) {
                             return <ToolResultImage key={index} content={resultContent} />;
@@ -1307,9 +1307,17 @@ function ToolResultImage({ content }: { content: string }) {
   );
 }
 
+function hasToolResultImage(content: string): boolean {
+  if (/!\[[^\]]*\]\([^)]+\)/.test(content)) return true;
+  return Boolean(extractImageURL(content));
+}
+
 function extractImageMarkdown(content: string): string {
   const markdownMatch = content.match(/!\[[^\]]*\]\([^)]+\)/);
   if (markdownMatch) return markdownMatch[0];
+
+  const imageURL = extractImageURL(content);
+  if (imageURL) return `![Generated image](${imageURL})`;
 
   try {
     const parsed = JSON.parse(content);
@@ -1319,6 +1327,19 @@ function extractImageMarkdown(content: string): string {
   } catch {
     return "";
   }
+}
+
+function extractImageURL(content: string): string {
+  try {
+    const parsed = JSON.parse(content);
+    if (typeof parsed?.image_url === "string") return parsed.image_url;
+    if (typeof parsed?.url === "string" && /\/images\//.test(parsed.url)) return parsed.url;
+    if (typeof parsed?.content === "string") return extractImageURL(parsed.content);
+  } catch {
+    const urlMatch = content.match(/https?:\/\/[^\s"')]+\/images\/[^\s"')]+/);
+    if (urlMatch) return urlMatch[0];
+  }
+  return "";
 }
 
 /**
